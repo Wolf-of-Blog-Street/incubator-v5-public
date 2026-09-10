@@ -1,0 +1,35 @@
+# {{PROJECT_NAME}} Documentation (`docs/`)
+
+Welcome to the documentation repository for **{{PROJECT_NAME}}**.
+
+This repository is the central source of truth for engineering architecture, CLI manuals, active design specifications, and operational runbooks.
+
+---
+
+## Documentation Structure (3 Tiers)
+
+```
+docs/
+├── system/                 # Tier 1: Living System Truth (Architecture & CLI Manuals)
+│   ├── ARCHITECTURE.md     # Master system architecture & technical blueprints
+│   ├── MANUAL.md           # CLI tools reference, commands & usage workflows
+│   └── INDEX.md            # Catalog of system manuals
+│
+├── design/                 # Tier 2: Transitional Blueprints (Active Stages & Epics)
+│   ├── templates/          # Standard templates for new epics & RFCs
+│   │   └── epic.template.md# The structured Google-style epic blueprint
+│   ├── INDEX.md            # Active & in-progress design specs table
+│   └── archive/            # Landed/completed epics preserved for history
+│
+└── support/                # Tier 3: Operations & Troubleshooting (Living)
+    ├── RUNBOOK.md          # Operational runbooks & debugging guides
+    └── INDEX.md            # Catalog of operational docs
+```
+
+---
+
+## For Agents & Developers
+
+- Read [system/ARCHITECTURE.md](system/ARCHITECTURE.md) to understand the technical architecture.
+- Read [system/MANUAL.md](system/MANUAL.md) for command lines, workflows, and tool usage.
+- To start a new stage or feature, instantiate [design/templates/epic.template.md](design/templates/epic.template.md) into `design/<slug>.md`.

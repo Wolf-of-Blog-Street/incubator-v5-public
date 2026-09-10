@@ -1,0 +1,34 @@
+{
+  "version": "5.0.0",
+  "default_agent": "manager-pm",
+  "operator_token_hash": null,
+  "manager": {
+    "agent_id": "manager-pm",
+    "role": "fleet-orchestrator",
+    "home_path": "~/agents/manager-pm",
+    "managed_agents_root": "~/agents",
+    "capabilities": ["provision-agent", "install-harness", "audit-fleet", "deploy-board"]
+  },
+  "agents": [
+    {
+      "id": "manager-pm",
+      "name": "Manager PM (Fleet Orchestrator)",
+      "icon": "🛡️",
+      "color": "cyan",
+      "tags": ["manager", "orchestrator", "pair"],
+      "projects": [
+        { "id": "incubator-v5", "name": "Incubator v5 Platform", "board": "incubator-v5.sqlite", "docs_path": "docs/design" }
+      ]
+    },
+    {
+      "id": "example-pm",
+      "name": "Example PM",
+      "icon": "🧪",
+      "color": "teal",
+      "tags": ["pair"],
+      "projects": [
+        { "id": "example-app", "name": "Example App", "board": "example-pm.example-app.sqlite", "docs_path": "workspaces/example-app/docs/design" }
+      ]
+    }
+  ]
+}

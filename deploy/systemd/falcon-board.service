@@ -1,0 +1,30 @@
+[Unit]
+Description=Incubator v5 Falcon Multi-Agent Board Server
+Documentation=https://github.com/Wolf-of-Blog-Street/incubator-v5-public
+After=network.target
+
+[Service]
+Type=simple
+User=falcon
+Group=falcon
+WorkingDirectory=/opt/incubator-v5
+Environment=NODE_ENV=production
+Environment=PORT=3333
+Environment=FALCON_ROSTER_PATH=/data/incubator-v5/config/roster.json
+Environment=BOARDS_DIR=/data/incubator-v5/boards
+# Operator token can be injected via systemd EnvironmentFile or secret manager:
+# EnvironmentFile=/etc/default/falcon-board
+
+ExecStart=/usr/bin/node components/board/tools/serve.mjs --port 3333 --roster /data/incubator-v5/config/roster.json --boards-dir /data/incubator-v5/boards
+
+Restart=always
+RestartSec=5s
+
+# Hardening measures
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

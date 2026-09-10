@@ -1,0 +1,45 @@
+/* Flat Kanban */
+.kanban-view-wrapper { display: flex; flex-direction: column; width: 100%; }
+
+.kanban-container {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.kanban-column { min-width: 0; }
+
+.col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0.75rem;
+}
+
+.col-title { display: flex; align-items: center; gap: 0.5rem; }
+
+.status-indicator { width: 8px; height: 8px; border-radius: 50%; }
+.status-todo { background: var(--status-todo); }
+.status-in-progress { background: var(--status-in-progress); }
+.status-review { background: var(--status-review); }
+.status-done { background: var(--status-done); }
+
+.col-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.card-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+@media (max-width: 1000px) {
+  .kanban-container, .swimlane-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .kanban-container, .swimlane-columns { grid-template-columns: 1fr; }
+}

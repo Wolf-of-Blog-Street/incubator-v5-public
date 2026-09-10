@@ -1,0 +1,23 @@
+services:
+  falcon-board:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: falcon-board-server
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3333}:3333"
+    environment:
+      - PORT=3333
+      - FALCON_OPERATOR_TOKEN=${FALCON_OPERATOR_TOKEN:-}
+      - FALCON_ROSTER_PATH=/data/config/roster.json
+      - BOARDS_DIR=/data/boards
+    volumes:
+      - falcon_boards:/data/boards
+      - falcon_config:/data/config
+
+volumes:
+  falcon_boards:
+    name: falcon_boards_data
+  falcon_config:
+    name: falcon_config_data

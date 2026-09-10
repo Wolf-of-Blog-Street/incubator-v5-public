@@ -1,0 +1,23 @@
+# Product Manual — {{PROJECT_NAME}}
+
+**Status**: Living  
+**Target Audience**: Operators, Developers, and Users  
+**Last Updated**: {{DATE}}
+
+---
+
+## 1. Quickstart
+
+Get started with **{{PROJECT_NAME}}**.
+
+```bash
+# Basic setup & launch
+node bin/run.mjs --help
+```
+
+---
+
+## 2. Command Reference & Workflows
+
+### CLI Reference
+Detailed reference for commands, options, and operational parameters.

@@ -1,0 +1,22 @@
+# Operational Runbook — {{PROJECT_NAME}}
+
+**Status**: Living  
+**Target Audience**: Operators & SRE  
+**Last Updated**: {{DATE}}
+
+---
+
+## 1. Routine Maintenance
+
+### 1.1 Service Health Checks
+```bash
+# Check service status and running processes
+ps aux | grep {{PROJECT_SLUG}}
+```
+
+---
+
+## 2. Troubleshooting & Incident Recovery
+
+### 2.1 Common Failure Modes & Diagnostics
+Diagnostic steps for identifying and resolving operational failures.

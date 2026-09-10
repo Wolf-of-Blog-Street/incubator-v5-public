@@ -1,0 +1,20 @@
+# Design Specs & Epics Index
+
+This directory contains **transitional engineering blueprints** (Epics / RFCs) for {{PROJECT_NAME}}.
+
+All new design documents are created by instantiating [`templates/epic.template.md`](templates/epic.template.md) into `design/<slug>.md`.
+
+---
+
+## Active & In-Progress Epics
+
+| Epic / Feature | Status | Target Component | Description |
+| :--- | :--- | :--- | :--- |
+| *No active epics currently in flight.* | — | — | — |
+
+---
+
+## Templates & Archives
+
+- **Template**: [`templates/epic.template.md`](templates/epic.template.md) — The standard Google-style design doc blueprint.
+- **Archive**: [`archive/INDEX.md`](archive/INDEX.md) — Completed and historical design specifications.

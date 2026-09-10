@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "projects": [
+    {
+      "id": "incubator-v5",
+      "name": "Incubator v5 Platform",
+      "github_url": "https://github.com/Wolf-of-Blog-Street/incubator-v5-public",
+      "description": "Multi-agent incubator orchestrator and Falcon Board platform",
+      "tags": [
+        "core",
+        "platform"
+      ],
+      "created_at": "2026-09-10T00:00:00.000Z",
+      "updated_at": "2026-09-10T00:00:00.000Z"
+    }
+  ]
+}

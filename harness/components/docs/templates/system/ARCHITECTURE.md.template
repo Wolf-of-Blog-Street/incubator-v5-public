@@ -1,0 +1,39 @@
+# System Architecture — {{PROJECT_NAME}}
+
+**Status**: Living  
+**Target Audience**: Engineers & AI Agents  
+**Last Updated**: {{DATE}}
+
+---
+
+## 1. System Overview
+
+**{{PROJECT_NAME}}** is {{PROJECT_DESCRIPTION}}.
+
+---
+
+## 2. Directory Layout
+
+```
+{{PROJECT_SLUG}}/
+├── src/                    # Application source code
+├── config/                 # Environment and application configuration
+└── tests/                  # Test suites
+```
+
+---
+
+## 3. Core Subsystems & Components
+
+### 3.1 Core Architecture
+- Overview of key architectural abstractions and data flow.
+
+### 3.2 Data Models & Persistence
+- Schemas, database tables, or storage layers.
+
+---
+
+## 4. Engineering Principles & Invariants
+1. **Executable Verification**: Tests verify real functionality and CLI/API contracts.
+2. **Schema-First**: Define schemas and interface contracts before writing implementation.
+3. **Living Documentation**: Changes to core APIs and schemas are reflected in this document upon landing.

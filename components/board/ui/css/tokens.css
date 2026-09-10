@@ -1,0 +1,61 @@
+/* Incubator v5 — Board Web UI Design Tokens */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Surfaces & Canvas */
+  --bg-canvas: #07090e;
+  --bg-surface: #0d111a;
+  --bg-surface-elevated: #111622;
+  --bg-card: #141926;
+  --bg-card-hover: #181f30;
+  --bg-glass: rgba(13, 17, 26, 0.85);
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.14);
+  --border-focus: rgba(99, 102, 241, 0.6);
+
+  /* Typography Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #7c8aa0;
+  --text-faint: #475569;
+
+  /* Status Colors */
+  --status-todo: #64748b;
+  --status-todo-bg: rgba(100, 116, 139, 0.14);
+  --status-planned: #38bdf8;
+  --status-planned-bg: rgba(56, 189, 248, 0.12);
+  --status-in-progress: #f59e0b;
+  --status-in-progress-bg: rgba(245, 158, 11, 0.14);
+  --status-done: #10b981;
+  --status-done-bg: rgba(16, 185, 129, 0.14);
+  --status-bug: #ef4444;
+  --status-bug-bg: rgba(239, 68, 68, 0.15);
+  --status-review: #a78bfa;
+  --status-review-bg: rgba(167, 139, 250, 0.14);
+
+  /* Accents */
+  --accent-primary: #6366f1;
+  --accent-cyan: #06b6d4;
+  --accent-emerald: #10b981;
+
+  /* Radius & Shadows */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover: 0 6px 20px -6px rgba(0, 0, 0, 0.5);
+  --shadow-drawer: -10px 0 40px rgba(0, 0, 0, 0.8);
+  --overlay-backdrop: rgba(0, 0, 0, 0.6);
+
+  /* Layout & Type Scale */
+  --gutter: 1.5rem;
+  --control-h: 30px;
+  --text-xs: 0.72rem;
+  --text-sm: 0.8rem;
+  --text-md: 0.875rem;
+
+  color-scheme: dark;
+}

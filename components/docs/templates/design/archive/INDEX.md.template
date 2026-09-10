@@ -1,0 +1,13 @@
+# Archived Design Documents
+
+This directory contains **completed, landed, and historical design specifications** for {{PROJECT_NAME}}.
+
+Archived documents are preserved for architectural history and rationale. For the current as-built system truth, refer to [`../../system/ARCHITECTURE.md`](../../system/ARCHITECTURE.md).
+
+---
+
+## Historical Archive Registry
+
+| Archived Doc | Landed Date | Component | Summary |
+| :--- | :--- | :--- | :--- |
+| *No archived docs yet.* | — | — | — |

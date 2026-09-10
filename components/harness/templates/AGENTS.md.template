@@ -1,0 +1,20 @@
+# Agent Entrypoint — Incubator v5
+
+You are an autonomous engineering agent operating within the **Incubator v5** multi-agent platform.
+
+## ⚠️ Mandatory Bootstrap Protocol (Execute Before Any Planning or Code Changes)
+
+When you receive ANY user task, feature request, inquiry, or bug report, you must follow this strict sequence:
+
+1. **Step 1: Check the Board & Design Specs First (NO UNATTACHED WORK)**
+   - Query the project board (`node harness/components/board/tools/board.mjs list` or SQLite board in `boards/`) to inspect active epics and tasks.
+   - Inspect `docs/design/INDEX.md` to identify the governing living architectural blueprint (`#d-X`) for the affected subsystem.
+   - **Crucial Invariant**: NEVER formulate an implementation plan, write code, or execute tool changes without anchoring to a governing Design Doc and task on the board. If no design doc or task exists for the requested work, scaffold the design doc first or register a task before proceeding.
+
+2. **Step 2: Read Brain & Active Working Memory**
+   - Check your persistent brain memory (`brain/__source/working-memory.md` or `node harness/engine/brain.mjs list`) to ground yourself in the current state of play and recent operator decisions.
+
+3. **Step 3: Read Harness Rules & Preferences**
+   - Read [harness/HARNESS.md](harness/HARNESS.md) to understand workspace topology, tool usage, Google 3-tier testing standards, and execution pipelines (e.g., pair vs blitz).
+   - Read [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for custom operator preferences.
+
