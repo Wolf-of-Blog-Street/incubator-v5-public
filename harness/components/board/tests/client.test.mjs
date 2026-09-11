@@ -16,7 +16,7 @@ test('board client: transparent local SQLite mode when URL is omitted', async ()
   const tmpDir = createTempDir();
   const dbPath = path.join(tmpDir, 'local.sqlite');
 
-  const client = createBoardClient({ dbPath });
+  const client = createBoardClient({ dbPath, local: true });
   assert.strictEqual(client.isRemote, false);
 
   try {
@@ -131,7 +131,7 @@ test('mcp server: tool registration and tool calls', async () => {
   const tmpDir = createTempDir();
   const dbPath = path.join(tmpDir, 'mcp.sqlite');
 
-  const mcp = createMcpServer({ dbPath });
+  const mcp = createMcpServer({ dbPath, local: true });
 
   try {
     // 1. initialize

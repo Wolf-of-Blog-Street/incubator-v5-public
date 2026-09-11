@@ -21,9 +21,13 @@ export function openRoster(options = {}) {
   fs.mkdirSync(boardsDir, { recursive: true });
 
   const agentStore = createAgentStore(options, boardsDir);
-  const boardFactory = createBoardFactory(agentStore);
+  const boardFactory = createBoardFactory(agentStore, options);
 
   return {
+    get boardsDir() {
+      return boardsDir;
+    },
+
     /**
      * Checks if an agent exists in the roster.
      * @param {string} agentId
@@ -95,6 +99,17 @@ export function openRoster(options = {}) {
      */
     registerAgent(agentConfig, optionsOrAutoGenerate = false) {
       return agentStore.registerAgent(agentConfig, optionsOrAutoGenerate);
+    },
+
+    /**
+     * Updates an agent's metadata in the roster.
+     * @param {string} agentId
+     * @param {Object} [updates={}]
+     * @returns {Object}
+     * @throws {AgentNotFoundError} If agent does not exist
+     */
+    updateAgent(agentId, updates = {}) {
+      return agentStore.updateAgent(agentId, updates);
     },
 
     /**
@@ -181,6 +196,14 @@ export function openRoster(options = {}) {
      */
     assertTenantAccess(authenticatedAgentId, targetAgentId, isOperator = false) {
       return assertTenantAccess({ authenticatedAgentId, targetAgentId, isOperator });
+    },
+
+    /**
+     * Updates doc directories configuration across the board factory.
+     * @param {Object} [docOpts={}]
+     */
+    setDocDirectories(docOpts = {}) {
+      boardFactory.setDocDirectories(docOpts);
     },
 
     /**

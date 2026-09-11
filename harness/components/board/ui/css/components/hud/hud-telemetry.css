@@ -1,0 +1,65 @@
+/* Telemetry text line (inside .filter-right) & Header Right (Search) */
+.telemetry-hud {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 0.5rem;
+}
+
+.hud-progress-wrap {
+  display: inline-block;
+  width: 56px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-medium);
+  overflow: hidden;
+  margin-right: 0.25rem;
+}
+
+.hud-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--text-secondary);
+  transition: width 0.3s ease;
+}
+
+.hud-value, .hud-number {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.hud-bugs.has-bugs {
+  color: var(--status-bug);
+  font-weight: 700;
+}
+
+/* Header Right */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.search-wrap {
+  display: flex;
+  align-items: center;
+}
+
+#search-input {
+  width: 150px;
+  height: var(--control-h);
+  padding: 0 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+#search-input:focus {
+  border-color: var(--border-focus);
+}

@@ -2,10 +2,40 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openBoard } from '../engine/board.mjs';
+import {
+  findDocsDir,
+  collectDocsFromDir,
+  attachDocTaskStats,
+  ensureDocCodenames
+} from '../api/services/docService.mjs';
+
+function findBoardsDir(startDir = process.cwd()) {
+  let curr = path.resolve(startDir);
+  while (true) {
+    const candidate = path.join(curr, 'boards');
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {}
+
+    const isGit = fs.existsSync(path.join(curr, '.git'));
+    const isRoster = fs.existsSync(path.join(curr, 'config/roster.json'));
+    const isHarness = fs.existsSync(path.join(curr, 'harness/HARNESS.md'));
+    if (isGit || isRoster || isHarness) {
+      return path.join(curr, 'boards');
+    }
+
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
+  }
+  return path.resolve('boards');
+}
 
 function findDefaultDb() {
-  if (process.env.BOARD_DB) return process.env.BOARD_DB;
-  return path.resolve('boards/project.sqlite');
+  if (process.env.BOARD_DB) return path.resolve(process.env.BOARD_DB);
+  return path.join(findBoardsDir(), 'project.sqlite');
 }
 
 /**
@@ -106,10 +136,16 @@ export function createBoardClient(options = {}) {
   const token = options.token || process.env.FALCON_BOARD_TOKEN || process.env.FALCON_AGENT_TOKEN || null;
   const dbPath = options.dbPath || findDefaultDb();
   const agentId = options.agentId || process.env.FALCON_AGENT_ID || null;
+  const project = options.project || process.env.BOARD_PROJECT || null;
 
   if (!url) {
     // Local fallback direct SQLite
-    const board = openBoard(dbPath);
+    const board = openBoard(dbPath, {
+      docsDir: findDocsDir(null, project),
+      targetAgent: agentId,
+      targetProject: project,
+      rootDir: process.cwd()
+    });
     return {
       isRemote: false,
       addItem: (item) => board.addItem(item),
@@ -129,6 +165,13 @@ export function createBoardClient(options = {}) {
           throw new Error(`Design doc file not found for slug "${slug}"`);
         }
         return { success: true, local: true, slug, filePath: resolved };
+      },
+      async listDocs() {
+        const dir = findDocsDir(null, project);
+        if (!dir) return [];
+        const docs = await collectDocsFromDir(dir);
+        attachDocTaskStats(docs, board);
+        return ensureDocCodenames(docs);
       },
       close: () => board.close()
     };
@@ -152,6 +195,7 @@ export function createBoardClient(options = {}) {
     if (!res.ok) {
       const err = new Error(data.error || `HTTP ${res.status} from board server`);
       err.status = res.status;
+      err.body = data;
       throw err;
     }
     return data;
@@ -162,44 +206,65 @@ export function createBoardClient(options = {}) {
     async addItem(item) {
       const payload = { ...item };
       if (agentId && !payload.agent) payload.agent = agentId;
+      if (project && !payload.project) payload.project = project;
       const data = await request('/api/v1/tasks', 'POST', payload);
       return data.task.id;
     },
     async updateItem(id, updates) {
       const payload = { ...updates };
       if (agentId && !payload.agent) payload.agent = agentId;
+      if (project && !payload.project) payload.project = project;
       const data = await request(`/api/v1/tasks/${id}`, 'PATCH', payload);
       return data.task;
     },
     async deleteItem(id) {
-      const q = agentId ? `?agent=${encodeURIComponent(agentId)}` : '';
+      const params = new URLSearchParams();
+      if (agentId) params.set('agent', agentId);
+      if (project) params.set('project', project);
+      const q = params.toString() ? `?${params.toString()}` : '';
       const data = await request(`/api/v1/tasks/${id}${q}`, 'DELETE');
       return data.success === true;
     },
     async listItems(filters = {}) {
       const params = new URLSearchParams();
-      if (filters.design_slug) params.set('doc', filters.design_slug);
-      if (filters.status) params.set('status', filters.status);
-      if (filters.track) params.set('track', filters.track);
-      if (filters.mode) params.set('mode', filters.mode);
       if (agentId) params.set('agent', agentId);
-      const query = params.toString() ? `?${params.toString()}` : '';
-      const data = await request(`/api/v1/tasks${query}`, 'GET');
+      if (project) params.set('project', project);
+      if (filters.doc || filters.design_slug) params.set('doc', filters.doc || filters.design_slug);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.mode) params.set('mode', filters.mode);
+      if (filters.track) params.set('track', filters.track);
+      const q = params.toString() ? `?${params.toString()}` : '';
+      const data = await request(`/api/v1/tasks${q}`, 'GET');
       return data.tasks || [];
     },
+    async listDocs() {
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      const q = params.toString() ? `?${params.toString()}` : '';
+      const endpoint = agentId ? `/api/v1/agents/${agentId}/docs${q}` : `/api/v1/docs${q}`;
+      const data = await request(endpoint, 'GET');
+      return data.docs || [];
+    },
     async getItem(id) {
-      const q = agentId ? `?agent=${encodeURIComponent(agentId)}` : '';
+      const params = new URLSearchParams();
+      if (agentId) params.set('agent', agentId);
+      if (project) params.set('project', project);
+      const q = params.toString() ? `?${params.toString()}` : '';
       const data = await request(`/api/v1/tasks/${id}${q}`, 'GET');
       return data.task;
     },
     async toggleChecklistItem(id, index) {
       const payload = { index };
       if (agentId) payload.agent = agentId;
+      if (project) payload.project = project;
       const data = await request(`/api/v1/tasks/${id}/toggle-checklist`, 'POST', payload);
       return data.task;
     },
     async getBoardSummary() {
-      const endpoint = agentId ? `/api/v1/agents/${agentId}/board` : '/api/v1/board';
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      const q = params.toString() ? `?${params.toString()}` : '';
+      const endpoint = agentId ? `/api/v1/agents/${agentId}/board${q}` : `/api/v1/board${q}`;
       return await request(endpoint, 'GET');
     },
     async syncDoc(slug, filePath) {
@@ -211,11 +276,13 @@ export function createBoardClient(options = {}) {
       const content = fs.readFileSync(resolved, 'utf8');
       const payload = { slug, content };
       if (agentId) payload.agent = agentId;
+      if (project) payload.project = project;
       return await request('/api/v1/docs/sync', 'POST', payload);
     },
     async closeDesignDoc(slug, opts = {}) {
       const payload = { status: 'Closed', force: Boolean(opts.force) };
       if (agentId) payload.agent = agentId;
+      if (project) payload.project = project;
       const endpoint = agentId ? `/api/v1/agents/${agentId}/docs/${slug}/status` : `/api/v1/docs/${slug}/status`;
       const res = await request(endpoint, 'POST', payload);
       return { closed: true, designSlug: slug, ...res };
@@ -226,6 +293,7 @@ export function createBoardClient(options = {}) {
     async openDesignDoc(slug) {
       const payload = { status: 'Active' };
       if (agentId) payload.agent = agentId;
+      if (project) payload.project = project;
       const endpoint = agentId ? `/api/v1/agents/${agentId}/docs/${slug}/status` : `/api/v1/docs/${slug}/status`;
       const res = await request(endpoint, 'POST', payload);
       return { reopened: true, designSlug: slug, ...res };

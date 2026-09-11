@@ -89,10 +89,17 @@ Every tier directory (`system/`, `design/`, `support/`) **must contain an `INDEX
   - **Flat Kanban (`#kanban`)**: Multi-column workflow board (`Planned`, `In Progress`, `Review`, `Done`, `Blocked`) with clean glassmorphism custom dropdown filters for Design Docs and Tracks.
   - **Fleet Matrix (`#fleet`)**: Real-time cross-agent health, active tasks, and status across all distributed local agent installations.
   - **Docs Catalog (`#docs`)**: Centralized design doc viewer with lifecycle filtering tabs (`All`, `Active`, `Finished`) and interactive Markdown reader drawer.
-- **Design Document Lifecycle System**:
-  - **Active-Only Viewports**: Roadmap Swimlanes, Flat Kanban, and Task Creation modals only display active design documents.
-  - **Finished Archival**: Tasks belonging to finished design docs are automatically filtered from the main board clutter, while fully preserved and viewable under `#docs`.
-  - **Markdown Frontmatter Sync**: Lifecycle transitions (`Active` ⇄ `Finished`) atomically update the source markdown frontmatter (`- **Status**: Finished`, `- **Last Updated**: YYYY-MM-DD`).
+- **Design Document Proposal Lifecycle**:
+  - **3-State Proposal Lifecycle**:
+    - **`Open & Active`**: Tasks exist and at least one is not Done.
+    - **`Open & Inactive`**: A doc with zero tasks (just authored or all tasks removed).
+    - **`Closed`**: Tasks exist and all are Done. Computed automatically by the board engine on task writes.
+  - **Automated Archiving & INDEX Rewrite**: When the final attached job is marked Done:
+    - Status in frontmatter automatically updates to `Closed` with today's date.
+    - File automatically moves from `docs/design/<slug>.md` to `docs/design/archive/<slug>.md`.
+    - Both tables in `docs/design/INDEX.md` are rewritten so active tables only list in-flight work.
+  - **Automatic Reopen**: Reopening any completed task or adding a new task to a closed doc automatically unarchives the file back to `docs/design/<slug>.md` and sets status back to `Open & Active`.
+  - **Job Hierarchy**: Every card on the board is a **job**. A job without a governing design doc is a **standalone job** (for obvious work, bug fixes, or small tweaks).
 - **Universal Industry Tracks**:
   - Supports 15 industry standard tracks with visual iconography: `⬡ core`, `⚙️ engine`, `🛡️ harness`, `🧹 sweeper`, `✨ feature`, `🐛 bug`, `🎨 frontend`, `🔌 backend`, `⚡ api`, `🪄 ux`, `🗄️ db`, `☁️ infra`, `📄 docs`, `🧪 test`, `🚀 perf`.
 - **Multi-Install Falcon Manager Roster API**:

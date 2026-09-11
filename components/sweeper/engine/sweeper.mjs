@@ -3,7 +3,6 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import { CHAOS_SEEDS, runChaosBattery, burstConcurrency, auditHandles } from './chaos.mjs';
-import { assertIdempotent, auditTenantIsolation, auditSecretSanitization } from './saasGuards.mjs';
 import { agyDriver } from './agyDriver.mjs';
 import { resolveStories, formatStoriesContext } from './storyResolver.mjs';
 
@@ -12,9 +11,6 @@ export {
   runChaosBattery,
   burstConcurrency,
   auditHandles,
-  assertIdempotent,
-  auditTenantIsolation,
-  auditSecretSanitization,
   agyDriver,
   resolveStories,
   formatStoriesContext

@@ -34,9 +34,9 @@ test('scaffoldDocs provisions a complete, valid 3-tier documentation repository'
 
     const epicTemplate = fs.readFileSync(path.join(tmpDir, 'design/templates/epic.template.md'), 'utf8');
     assert.match(epicTemplate, /## 2\. Goals & Explicit Non-Goals/);
-    assert.match(epicTemplate, /## 3\. Data Models & Interface Contracts/);
-    assert.match(epicTemplate, /## 4\. Implementation Milestones/);
-    assert.match(epicTemplate, /## 5\. Verification Plan/);
+    assert.match(epicTemplate, /## 3\. Alternatives Considered/);
+    assert.match(epicTemplate, /## 4\. Design/);
+    assert.match(epicTemplate, /## 5\. Implementation Milestones/);
 
     // Verify product/ does not exist
     assert.equal(fs.existsSync(path.join(tmpDir, 'product')), false);

@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <!-- Global Top Navigation & Telemetry HUD -->
+  <!-- Global Top Navigation -->
   <header class="app-header">
     <div class="header-left">
       <div class="agent-switcher-dropdown" id="agent-switcher-dropdown">
@@ -27,12 +27,12 @@
           <span class="agent-switcher-chevron">▾</span>
         </button>
         <div class="agent-dropdown-menu" id="agent-dropdown-menu" role="menu" style="display: none;">
-          <div class="agent-menu-header">FLEET SEATS</div>
+          <div class="agent-menu-header">Seats</div>
           <button type="button" class="agent-menu-item fleet-overview-item" id="btn-menu-fleet" role="menuitem">
             <span class="agent-menu-icon">🌐</span>
             <div class="agent-menu-info">
-              <span class="agent-menu-title">Fleet Topology Overview</span>
-              <span class="agent-menu-meta">All Agent Seats Matrix</span>
+              <span class="agent-menu-title">Fleet overview</span>
+              <span class="agent-menu-meta">All seats</span>
             </div>
           </button>
           <div class="agent-menu-divider"></div>
@@ -42,80 +42,41 @@
         </div>
       </div>
 
-      <div class="hierarchy-separator">/</div>
-
       <!-- Project Switcher Dropdown (Workspace Projects) -->
       <div class="project-switcher-dropdown" id="project-switcher-dropdown">
         <button type="button" class="project-switcher-btn" id="project-switcher-btn" aria-haspopup="true" aria-expanded="false" title="Switch Workspace Project">
-          <span class="project-btn-icon">📁</span>
           <span class="project-btn-name" id="active-project-name">incubator-v5</span>
           <span class="project-switcher-chevron">▾</span>
         </button>
         <div class="project-dropdown-menu" id="project-dropdown-menu" role="menu" style="display: none;">
-          <div class="project-menu-header">WORKSPACE PROJECTS</div>
+          <div class="project-menu-header">Projects</div>
           <div id="project-menu-list" class="project-menu-list">
             <!-- Dynamic list of projects for active agent -->
           </div>
         </div>
-      </div>
-
-      <div class="live-indicator" title="Connected to board engine">
-        <span class="pulse-dot"></span>
-        <span class="live-label">LIVE SYNC</span>
-      </div>
-    </div>
-
-    <!-- Live Telemetry HUD -->
-    <div class="telemetry-hud" id="telemetry-hud">
-      <div class="hud-metric" title="Stage Overall Progress">
-        <span class="hud-label">STAGE COMPLETION</span>
-        <div class="hud-progress-wrap">
-          <div class="hud-progress-bar" id="hud-progress-bar" style="width: 0%;"></div>
-        </div>
-        <span class="hud-value" id="hud-progress-text">0%</span>
-      </div>
-      <div class="hud-divider"></div>
-      <div class="hud-stat" title="Total Tasks on Board">
-        <span class="hud-label">TASKS</span>
-        <span class="hud-number" id="hud-total-tasks">0</span>
-      </div>
-      <div class="hud-stat" id="hud-bugs-container" title="Active Bugs">
-        <span class="hud-label">BUGS</span>
-        <span class="hud-number hud-bugs" id="hud-total-bugs">0</span>
       </div>
     </div>
 
     <div class="header-right">
       <!-- Search Input -->
       <div class="search-wrap">
-        <span class="search-icon">⌕</span>
-        <input type="text" id="search-input" placeholder="Search tasks..." aria-label="Search tasks" autocomplete="off" spellcheck="false">
-        <kbd class="shortcut-key" title="Press / to search">/</kbd>
+        <input type="text" id="search-input" placeholder="Search" title="Press / to search" aria-label="Search tasks" autocomplete="off" spellcheck="false">
       </div>
 
       <!-- View Switcher -->
       <div class="view-toggle">
-        <button id="view-fleet-btn" class="toggle-btn" title="Topological Fleet Overview (0)">
-          <span class="btn-icon">🌐</span> Fleet
-        </button>
-        <button id="view-swimlanes-btn" class="toggle-btn active" title="Roadmap Swimlanes (1)">
-          <span class="btn-icon">📑</span> Roadmap
-        </button>
-        <button id="view-kanban-btn" class="toggle-btn" title="Flat Kanban Columns (2)">
-          <span class="btn-icon">▦</span> Flat Kanban
-        </button>
-        <button id="view-docs-btn" class="toggle-btn" title="Design Docs Catalog (3)">
-          <span class="btn-icon">📄</span> Design Docs
-        </button>
+        <button id="view-fleet-btn" class="toggle-btn" title="Fleet (key 0)">Fleet</button>
+        <button id="view-projects-btn" class="toggle-btn" title="Projects (key 1)">Projects</button>
+        <button id="view-kanban-btn" class="toggle-btn" title="Board (key 2)">Board</button>
+        <button id="view-swimlanes-btn" class="toggle-btn active" title="Lanes, one per design doc (key 3)">Lanes</button>
+        <button id="view-docs-btn" class="toggle-btn" title="Docs (key 4)">Docs</button>
       </div>
 
       <!-- Action Buttons -->
       <div class="header-actions">
-        <button id="btn-log-bug" class="btn btn-danger" title="Log a Bug (B)">
-          <span>🐛</span> Log Bug
-        </button>
-        <button id="btn-new-task" class="btn btn-primary" title="Create New Task (N)">
-          <span>+</span> New Task
+        <button id="btn-log-bug" class="btn btn-secondary" title="Log a Bug (B)">Bug</button>
+        <button id="btn-new-task" class="btn btn-primary" title="Create New Job (N)">
+          <span>+</span> Job
         </button>
       </div>
     </div>
@@ -125,10 +86,10 @@
   <div class="filter-toolbar">
     <div class="filter-controls">
       <div class="filter-control-group">
-        <span class="filter-label">TRACK:</span>
+        <span class="filter-label">Track</span>
         <div class="custom-dropdown" id="track-dropdown">
           <button type="button" class="dropdown-trigger" id="track-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
-            <span class="dropdown-trigger-label" id="track-dropdown-label">All Tracks</span>
+            <span class="dropdown-trigger-label" id="track-dropdown-label">All tracks</span>
             <span class="dropdown-chevron">▾</span>
           </button>
           <div class="dropdown-menu" id="track-dropdown-menu" role="listbox"></div>
@@ -136,41 +97,24 @@
       </div>
 
       <div class="filter-control-group">
-        <span class="filter-label">DESIGN DOC:</span>
+        <span class="filter-label">Doc</span>
         <div class="custom-dropdown" id="doc-dropdown">
           <button type="button" class="dropdown-trigger" id="doc-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
-            <span class="dropdown-trigger-label" id="doc-dropdown-label">All Design Docs</span>
+            <span class="dropdown-trigger-label" id="doc-dropdown-label">All open docs</span>
             <span class="dropdown-chevron">▾</span>
           </button>
           <div class="dropdown-menu" id="doc-dropdown-menu" role="listbox"></div>
         </div>
       </div>
-
-      <div class="filter-control-group">
-        <span class="filter-label">DOC STATUS:</span>
-        <div class="custom-dropdown" id="doc-status-dropdown">
-          <button type="button" class="dropdown-trigger" id="doc-status-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
-            <span class="dropdown-trigger-label" id="doc-status-dropdown-label">All Docs</span>
-            <span class="dropdown-chevron">▾</span>
-          </button>
-          <div class="dropdown-menu" id="doc-status-dropdown-menu" role="listbox"></div>
-        </div>
-      </div>
-
-      <!-- Quick access bug filter shortcut -->
-      <button id="btn-quick-filter-bugs" class="chip chip-bug" title="Toggle Show Only Bugs" style="margin-left: 0.25rem;">
-        🐛 Bugs Only
-      </button>
     </div>
 
     <div class="filter-right">
-      <button id="btn-toggle-done" class="btn btn-secondary btn-sm" title="Toggle Done Columns (Collapsed/Expanded)" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;">
-        <span id="btn-toggle-done-icon">✓</span> <span id="btn-toggle-done-text">Expand Done</span>
+      <div class="telemetry-hud" id="telemetry-hud" title="Board progress"><span class="hud-progress-wrap"><span class="hud-progress-bar" id="hud-progress-bar" style="width: 0%;"></span></span><span class="hud-value" id="hud-progress-text">0%</span> · <span class="hud-number" id="hud-total-tasks">0</span> jobs · <span class="hud-number hud-bugs" id="hud-total-bugs">0</span> bugs</div>
+      <button id="btn-toggle-done" class="btn btn-secondary btn-sm" title="Show or hide done tasks">
+        <span id="btn-toggle-done-icon">▾</span> <span id="btn-toggle-done-text">Show done</span>
       </button>
-      <button id="btn-toggle-all-swimlanes" class="btn btn-secondary btn-sm" title="Toggle Collapse All Swimlanes" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;">
-        <span>↕</span> Toggle All
-      </button>
-      <button id="btn-refresh" class="btn-icon-only" title="Force Refresh">
+      <button id="btn-toggle-all-swimlanes" class="btn btn-secondary btn-sm" title="Collapse or expand all lanes">Collapse all</button>
+      <button id="btn-refresh" class="btn btn-secondary btn-sm btn-icon-only" title="Refresh">
         <span class="refresh-icon">↻</span>
       </button>
     </div>
@@ -200,6 +144,47 @@
       </div>
     </section>
 
+    <!-- Projects Catalog & Live Inventory View -->
+    <section id="projects-view" class="projects-view-wrapper" style="display: none;">
+      <!-- Projects Header Bar -->
+      <div class="projects-header-bar">
+        <div class="projects-title-area">
+          <div class="projects-view-badge">
+            <span class="projects-view-icon">📁</span>
+            <span class="projects-view-label">PROJECTS CATALOG</span>
+          </div>
+          <span class="projects-subtext">GitHub repository registry and live fleet checkout inventory</span>
+        </div>
+        <div class="projects-header-actions">
+          <button type="button" id="btn-refresh-projects-scan" class="btn btn-secondary btn-sm" title="Force re-scan fleet agent workspaces">
+            <span class="refresh-icon">↻</span> Scan Workspaces
+          </button>
+          <button type="button" id="btn-add-project" class="btn btn-primary btn-sm" title="Register a new GitHub repository">
+            <span>+</span> Add Project
+          </button>
+        </div>
+      </div>
+
+      <!-- Summary Cards Strip -->
+      <div class="projects-summary-strip" id="projects-summary-strip"></div>
+
+      <!-- Filter & Search Toolbar -->
+      <div class="projects-toolbar">
+        <div class="projects-search-box">
+          <span class="search-icon">⌕</span>
+          <input type="text" id="projects-search-input" placeholder="Filter projects by name, URL, or tag..." autocomplete="off" spellcheck="false">
+        </div>
+        <div class="projects-filter-chips" id="projects-filter-chips">
+          <button type="button" class="proj-filter-chip active" data-filter="all">All <span class="badge" id="count-proj-all">0</span></button>
+          <button type="button" class="proj-filter-chip" data-filter="checked-out">Checked Out <span class="badge" id="count-proj-checked">0</span></button>
+          <button type="button" class="proj-filter-chip" data-filter="unassigned">Unassigned <span class="badge" id="count-proj-unassigned">0</span></button>
+        </div>
+      </div>
+
+      <!-- Projects Grid -->
+      <div class="projects-grid" id="projects-grid"></div>
+    </section>
+
     <!-- 1. Design Doc Swimlanes View (Default Primary View) -->
     <section id="swimlanes-view" class="swimlanes-container">
       <div id="swimlanes-list" class="swimlanes-list"></div>
@@ -207,50 +192,18 @@
 
     <!-- 2. Flat Kanban Board View -->
     <section id="kanban-view" class="kanban-view-wrapper" style="display: none;">
-      <!-- Flat Kanban Header & Filter Strip -->
-      <div class="kanban-header-bar">
-        <div class="kanban-title-area">
-          <div class="kanban-view-badge">
-            <span class="kanban-view-icon">▦</span>
-            <span class="kanban-view-label">FLAT KANBAN</span>
-          </div>
-          <span class="kanban-subtext">Unified multi-column workflow across all tasks</span>
-        </div>
-
-        <div class="kanban-filter-group">
-          <span class="kanban-filter-label">DESIGN DOC:</span>
-          <div class="custom-dropdown" id="kanban-doc-dropdown">
-            <button type="button" class="dropdown-trigger" id="kanban-doc-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false">
-              <span class="dropdown-trigger-label" id="kanban-doc-dropdown-label">All Design Docs</span>
-              <span class="dropdown-chevron">▾</span>
-            </button>
-            <div class="dropdown-menu" id="kanban-doc-dropdown-menu" role="listbox"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Active Filter Banner (shown when a doc or standalone is filtered) -->
-      <div class="kanban-active-filter-banner" id="kanban-active-filter-banner" style="display: none;">
-        <div class="banner-left">
-          <span class="banner-icon">🎯</span>
-          <span class="banner-text">Filtering tasks for: <strong id="kanban-filter-doc-name">All</strong></span>
-          <span class="banner-count" id="kanban-filter-count">0 tasks</span>
-        </div>
-        <button class="banner-clear-btn" id="btn-kanban-clear-filter">✕ Show All Docs</button>
-      </div>
-
       <!-- Columns Grid -->
       <div class="kanban-container">
-        <!-- Planned Column -->
-        <div class="kanban-column" id="col-planned">
+        <!-- To-Do Column -->
+        <div class="kanban-column" id="col-todo">
           <div class="col-header">
             <div class="col-title">
-              <span class="status-indicator status-planned"></span>
-              <span class="col-name">Planned</span>
-              <span class="col-count" id="count-planned">0</span>
+              <span class="status-indicator status-todo"></span>
+              <span class="col-name">To-Do</span>
+              <span class="col-count" id="count-todo">0</span>
             </div>
           </div>
-          <div class="card-list" id="list-planned" data-status="planned"></div>
+          <div class="card-list" id="list-todo" data-status="todo"></div>
         </div>
 
         <!-- In Progress Column -->
@@ -263,6 +216,18 @@
             </div>
           </div>
           <div class="card-list" id="list-in-progress" data-status="in-progress"></div>
+        </div>
+
+        <!-- Review Column (Human Gate) -->
+        <div class="kanban-column" id="col-review">
+          <div class="col-header">
+            <div class="col-title">
+              <span class="status-indicator status-review"></span>
+              <span class="col-name">In Review</span>
+              <span class="col-count" id="count-review">0</span>
+            </div>
+          </div>
+          <div class="card-list" id="list-review" data-status="review"></div>
         </div>
 
         <!-- Done Column -->
@@ -283,13 +248,20 @@
     <section id="docs-view" class="docs-container" style="display: none;">
       <div class="docs-header-bar">
         <div class="docs-title-group">
-          <h2 class="section-title">Design Documents & Epics</h2>
-          <p class="section-desc">Living technical specifications. Tasks and bugs are linked directly to these documents.</p>
+          <h2 class="section-title">Design docs</h2>
         </div>
         <div class="docs-filter-tabs" id="docs-filter-tabs">
-          <button type="button" class="docs-filter-tab active" data-filter="all">All <span class="tab-count" id="count-docs-all">0</span></button>
-          <button type="button" class="docs-filter-tab" data-filter="active">Active <span class="tab-count" id="count-docs-active">0</span></button>
-          <button type="button" class="docs-filter-tab" data-filter="finished">Finished <span class="tab-count" id="count-docs-finished">0</span></button>
+          <button type="button" class="docs-filter-tab active" data-filter="open">Open <span class="tab-count" id="count-docs-open-tab">0</span></button>
+          <button type="button" class="docs-filter-tab" data-filter="closed">Closed <span class="tab-count" id="count-docs-closed-tab">0</span></button>
+          <button type="button" class="docs-filter-tab" data-filter="all">All <span class="tab-count" id="count-docs-all">0</span></button>
+        </div>
+        <div class="docs-subfilter-tabs" id="docs-catalog-subfilters">
+          <span class="subfilter-label">SUB-FILTER:</span>
+          <button type="button" class="docs-subtab active" data-subfilter="all">All tasks</button>
+          <button type="button" class="docs-subtab" data-subfilter="todo">Planned</button>
+          <button type="button" class="docs-subtab" data-subfilter="in-progress">In progress</button>
+          <button type="button" class="docs-subtab" data-subfilter="review">In review</button>
+          <button type="button" class="docs-subtab" data-subfilter="finished">Done</button>
         </div>
       </div>
       <div id="docs-grid" class="docs-grid"></div>
@@ -308,8 +280,8 @@
           <span class="doc-reader-author" id="reader-author">--</span>
         </div>
         <div class="doc-reader-actions">
-          <button id="reader-finish-doc-btn" class="btn btn-sm btn-finish-doc" style="display: none;">Mark as Finished ✓</button>
-          <button id="reader-reopen-doc-btn" class="btn btn-sm btn-reopen-doc" style="display: none;">Reopen Design Doc ↻</button>
+          <button id="reader-finish-doc-btn" class="btn btn-sm btn-finish-doc" style="display: none;">Close Design Doc 🏁</button>
+          <button id="reader-reopen-doc-btn" class="btn btn-sm btn-reopen-doc" style="display: none;">Open Design Doc ↻</button>
           <button id="reader-add-task-btn" class="btn btn-primary btn-sm">+ Cut Task</button>
           <button id="doc-reader-close-btn" class="drawer-close" aria-label="Close reader">✕</button>
         </div>
@@ -349,9 +321,9 @@
           <div class="form-group">
             <label for="drawer-status-select">Status</label>
             <select id="drawer-status-select" class="form-select">
-              <option value="planned">⏳ Planned</option>
+              <option value="planned">Planned</option>
               <option value="in-progress">⚡ In Progress</option>
-              <option value="done">✅ Done</option>
+              <option value="done">Done</option>
             </select>
           </div>
           <div class="form-group">
@@ -498,9 +470,45 @@
     </form>
   </dialog>
 
+  <!-- Add Project Dialog Modal -->
+  <dialog id="add-project-dialog" class="task-dialog project-dialog" aria-labelledby="project-modal-title">
+    <form method="dialog" id="add-project-form" class="modal-form">
+      <div class="modal-header">
+        <h3 id="project-modal-title" class="modal-title">📁 Register GitHub Project</h3>
+        <button type="button" id="project-modal-close-btn" class="drawer-close" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="proj-url-input">GitHub URL <span class="required">*</span></label>
+          <input type="url" id="proj-url-input" class="form-input" placeholder="https://github.com/org/repository" required autocomplete="off">
+          <span class="form-hint" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem;">HTTPS or SSH repository URL</span>
+        </div>
+
+        <div class="form-group">
+          <label for="proj-name-input">Project Display Name</label>
+          <input type="text" id="proj-name-input" class="form-input" placeholder="e.g. Project Alpha (optional, derived if empty)" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="proj-desc-input">Description</label>
+          <input type="text" id="proj-desc-input" class="form-input" placeholder="e.g. Catalina SERP engine and programmatic SEO" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="proj-tags-input">Tags</label>
+          <input type="text" id="proj-tags-input" class="form-input" placeholder="e.g. seo, client, core (comma-separated)" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="project-modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="project-modal-submit-btn" class="btn btn-primary">Register Project</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Toast Notification Center -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-  <script type="module" src="app.js?v=3"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>

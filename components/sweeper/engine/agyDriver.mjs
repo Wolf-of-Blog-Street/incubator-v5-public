@@ -13,15 +13,24 @@ const AGY_BIN = process.env.AGY_BIN || 'agy';
  * @returns {any} Parsed JSON response
  */
 export function invokeAgy({ model, prompt, timeoutMs = 180000, effort = null, retries = 1 }) {
-  const args = ['--model', model];
+  const args = [
+    '--model', model,
+    '--input-format', 'stream-json',
+    '--output-format', 'stream-json'
+  ];
   if (effort) args.push('--effort', effort);
-  args.push('--print', prompt);
+
+  const inputJson = JSON.stringify({
+    event: 'user',
+    message: { content: prompt }
+  }) + '\n';
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = spawnSync(AGY_BIN, args, {
       encoding: 'utf8',
+      input: inputJson,
       timeout: timeoutMs,
-      maxBuffer: 10 * 1024 * 1024,
+      maxBuffer: 50 * 1024 * 1024,
       env: { ...process.env, CI: '1' }
     });
 
@@ -37,7 +46,22 @@ export function invokeAgy({ model, prompt, timeoutMs = 180000, effort = null, re
       continue;
     }
 
-    const rawOutput = (res.stdout || '').trim();
+    let responseText = '';
+    const stdout = res.stdout || '';
+    for (const line of stdout.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line);
+        if (ev.event === 'result' && ev.result && typeof ev.result.response === 'string') {
+          responseText = ev.result.response;
+          break;
+        }
+      } catch {
+        // Skip unparseable stream lines
+      }
+    }
+
+    const rawOutput = (responseText || stdout).trim();
 
     // 1. Try extracting markdown fenced JSON first
     const jsonMatch = rawOutput.match(/```(?:json)?\s*([\s\S]*?)\s*```/);

@@ -12,6 +12,8 @@ import { spawn, execSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { resolveFriendEnvironment, SUPPORTED_PROVIDERS } from './sandbox.mjs';
+import { openAccountStore } from './accounts.mjs';
 
 /**
  * Default Built-in Friends Catalog
@@ -180,8 +182,12 @@ export function resolveFriendCommand(friendId, options = {}) {
   }
 
   const effort = options.effort || provider.defaultEffort;
-  if (effort && provider.effortFlag) {
-    args.push(provider.effortFlag, effort);
+  if (effort) {
+    if (provider.effortFlag) {
+      args.push(provider.effortFlag, effort);
+    } else if (friendId === 'codex') {
+      args.push('-c', `model_reasoning_effort=${effort}`);
+    }
   }
 
   if (Array.isArray(options.extraFlags)) {
@@ -300,7 +306,18 @@ export function spawnFriendProcess(binary, args, options = {}) {
     const startTime = Date.now();
     const cwd = options.cwd || process.cwd();
     const timeoutMs = options.timeoutMs ?? 120000;
-    const env = { ...process.env, ...(options.env || {}) };
+
+    // Cleanse ambient provider credentials and config dirs unless explicitly passed in options.env (Task #47)
+    const baseEnv = { ...process.env };
+    if (!options.env?.ANTHROPIC_API_KEY) delete baseEnv.ANTHROPIC_API_KEY;
+    if (!options.env?.OPENAI_API_KEY) delete baseEnv.OPENAI_API_KEY;
+    if (!options.env?.MOONSHOT_API_KEY) delete baseEnv.MOONSHOT_API_KEY;
+    if (!options.env?.CLAUDE_CONFIG_DIR) delete baseEnv.CLAUDE_CONFIG_DIR;
+    if (!options.env?.CODEX_HOME) delete baseEnv.CODEX_HOME;
+    if (!options.env?.KIMI_HOME) delete baseEnv.KIMI_HOME;
+    if (!options.env?.OPENCODE_HOME) delete baseEnv.OPENCODE_HOME;
+
+    const env = { ...baseEnv, ...(options.env || {}) };
 
     let stdout = '';
     let stderr = '';
@@ -316,18 +333,20 @@ export function spawnFriendProcess(binary, args, options = {}) {
       try { child.stdin.end(); } catch {}
     }
 
+    let timedOut = false;
     let timeoutTimer = null;
+    let killTimer = null;
+
     if (timeoutMs > 0) {
       timeoutTimer = setTimeout(() => {
         if (!isFinished) {
-          isFinished = true;
+          timedOut = true;
           try {
             child.kill('SIGTERM');
-            setTimeout(() => {
+            killTimer = setTimeout(() => {
               try { child.kill('SIGKILL'); } catch {}
-            }, 2000);
+            }, 1000);
           } catch {}
-          reject(new Error(`Friend process timed out after ${timeoutMs}ms (${binary} ${args.slice(0, 2).join(' ')})`));
         }
       }, timeoutMs);
     }
@@ -346,6 +365,7 @@ export function spawnFriendProcess(binary, args, options = {}) {
 
     child.on('error', err => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
       if (!isFinished) {
         isFinished = true;
         reject(err);
@@ -354,15 +374,20 @@ export function spawnFriendProcess(binary, args, options = {}) {
 
     child.on('close', code => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
       if (!isFinished) {
         isFinished = true;
-        const durationMs = Date.now() - startTime;
-        resolve({
-          exitCode: code ?? 0,
-          stdout,
-          stderr,
-          durationMs
-        });
+        if (timedOut) {
+          reject(new Error(`Friend process timed out after ${timeoutMs}ms (${binary} ${args.slice(0, 2).join(' ')})`));
+        } else {
+          const durationMs = Date.now() - startTime;
+          resolve({
+            exitCode: code ?? 0,
+            stdout,
+            stderr,
+            durationMs
+          });
+        }
       }
     });
   });
@@ -387,6 +412,56 @@ export async function dispatchFriend(friendId, options = {}) {
   const { binary, args, provider } = resolveFriendCommand(friendId, options);
   const cwd = options.cwd || process.cwd();
   const description = options.description || `friend(${friendId}): ${options.prompt ? options.prompt.slice(0, 60) : 'run'}`;
+  const agentId = options.agentId || 'manager-pm';
+  const baseAuthDir = options.baseAuthDir || null;
+
+  // 1. Resolve sandboxed environment if provider is supported
+  let friendEnv = options.env ? { ...options.env } : {};
+  let configDir = null;
+  if (SUPPORTED_PROVIDERS.includes(friendId)) {
+    const sandboxed = resolveFriendEnvironment({
+      provider: friendId,
+      agentId,
+      baseAuthDir,
+      customEnv: friendEnv
+    });
+    friendEnv = sandboxed.env;
+    configDir = sandboxed.configDir;
+  }
+
+  // 2. Select healthy account from pool if store available
+  let activeAccount = null;
+  let store = options.accountStore || null;
+  if (!store && options.accountsPath !== false) {
+    try {
+      store = openAccountStore({ storagePath: options.accountsPath });
+    } catch {
+      store = null;
+    }
+  }
+
+  if (store) {
+    activeAccount = store.getHealthyAccount(friendId, agentId);
+    if (activeAccount) {
+      if (activeAccount.type === 'api_key' && activeAccount.credentials?.apiKey) {
+        if (friendId === 'claude') {
+          friendEnv.ANTHROPIC_API_KEY = activeAccount.credentials.apiKey;
+        } else if (friendId === 'codex') {
+          friendEnv.OPENAI_API_KEY = activeAccount.credentials.apiKey;
+        } else if (friendId === 'kimi') {
+          friendEnv.MOONSHOT_API_KEY = activeAccount.credentials.apiKey;
+        }
+      } else if (activeAccount.type === 'oauth' && activeAccount.credentials?.oauth && configDir) {
+        if (friendId === 'claude') {
+          const credPath = path.join(configDir, '.credentials.json');
+          fs.writeFileSync(credPath, JSON.stringify(activeAccount.credentials.oauth, null, 2), { mode: 0o600 });
+        } else if (friendId === 'codex') {
+          const authPath = path.join(configDir, 'auth.json');
+          fs.writeFileSync(authPath, JSON.stringify(activeAccount.credentials.oauth, null, 2), { mode: 0o600 });
+        }
+      }
+    }
+  }
 
   const report = await withJjIsolation(
     cwd,
@@ -394,6 +469,7 @@ export async function dispatchFriend(friendId, options = {}) {
     async ({ changeId, isIsolated }) => {
       const execResult = await spawnFriendProcess(binary, args, {
         cwd,
+        env: friendEnv,
         timeoutMs: options.timeoutMs,
         onStdout: options.onStdout,
         onStderr: options.onStderr
@@ -402,6 +478,20 @@ export async function dispatchFriend(friendId, options = {}) {
     }
   );
 
+  const combinedOutput = `${report.result.stdout} ${report.result.stderr}`;
+  const isRateLimited = /429|rate[_\s-]?limit|quota[_\s-]?exceeded/i.test(combinedOutput);
+  const isRevoked = /401|unauthorized|revoked|token[_\s-]?expired/i.test(combinedOutput);
+
+  if (activeAccount && store) {
+    if (isRateLimited) {
+      store.recordRateLimit(activeAccount.id);
+    } else if (isRevoked) {
+      store.updateAccount(activeAccount.id, { status: 'revoked' });
+    } else if (report.result.exitCode === 0) {
+      store.recordSuccess(activeAccount.id);
+    }
+  }
+
   return {
     provider: friendId,
     displayName: provider.displayName,
@@ -409,6 +499,7 @@ export async function dispatchFriend(friendId, options = {}) {
     args,
     prompt: options.prompt,
     cwd,
+    accountId: activeAccount?.id || null,
     isIsolated: report.isIsolated,
     changeId: report.changeId,
     commitId: report.commitId,
@@ -416,6 +507,8 @@ export async function dispatchFriend(friendId, options = {}) {
     exitCode: report.result.exitCode,
     stdout: report.result.stdout,
     stderr: report.result.stderr,
-    durationMs: report.result.durationMs
+    durationMs: report.result.durationMs,
+    isRateLimited,
+    isRevoked
   };
 }

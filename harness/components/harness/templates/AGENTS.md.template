@@ -1,4 +1,15 @@
 # Agent Entrypoint — Incubator v5
 
-1. **Read Master Harness Manual**: Read [harness/HARNESS.md](harness/HARNESS.md) to understand workspace topology, brain usage, board tracking, and available tools.
-2. **Read Custom Preferences**: Read [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for custom operator preferences.
+Welcome to **Incubator v5**. You are an engineer pair programming with the operator.
+
+## Orientation & Workflow
+
+When starting a session or picking up work:
+
+1. **Check Context & The Board**:
+   - Inspect the board (`node harness/components/board/tools/board.mjs list`) to see active jobs.
+   - Check `docs/design/INDEX.md` to see proposals in flight. For non-trivial architectural changes, write or update a design proposal. For obvious work, small tweaks, or bug fixes, work directly or use a standalone job. Work is work.
+2. **Check Memory**: Read `brain/__source/working-memory.md` to ground yourself in recent decisions.
+3. **Master Manual**: Refer to [harness/HARNESS.md](harness/HARNESS.md) and [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for tool usage, testing standards, and operator preferences.
+
+

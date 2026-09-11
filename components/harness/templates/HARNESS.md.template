@@ -14,7 +14,7 @@ This document is your master operating manual. It teaches you how your workspace
 
 ### Session Start Protocol & Sequence of Work
 When starting any session or receiving ANY user request:
-1. **Check the Board & Design Docs First**: Inspect the project board (`node harness/components/board/tools/board.mjs list` or SQLite in `boards/`) to see what epics/tasks are active, and check `docs/design/INDEX.md` to identify the governing architectural blueprint (`#d-X`). NEVER plan or code without anchoring to a design doc.
+1. **Check the Board & Design Docs**: Inspect the project board (`node harness/components/board/tools/board.mjs list` or SQLite in `boards/`) to see active jobs, and check `docs/design/INDEX.md` for active proposals. For non-trivial features, consult or author a design proposal; for obvious work, use standalone jobs.
 2. **Check Active Memory**: Check your brain (`node harness/engine/brain.mjs list` and `brain/__source/working-memory.md`) to recall active state.
 3. **Read Master Harness & Preferences**: Read [harness/HARNESS.md](HARNESS.md) and [harness/HARNESS-custom.md](HARNESS-custom.md) for tool usage, testing contracts, and custom preferences.
 
@@ -74,7 +74,7 @@ The project board tracks individual executable **tasks** (work items) that roll 
 ### Key Rules
 - **Only Real Projects in `workspaces/` Have Boards**: Every project in `workspaces/<project>/` has its own dedicated board at `boards/<project>.sqlite`.
 - **`projects/` are NOT Managed by the Board**: Folders in `projects/` are small, fast, local-only scripts and experiments; they do not have boards.
-- **GitHub is NOT Required**: Projects in `workspaces/<project>/` do NOT need a GitHub remote — some will have remotes, some are purely local JJ/Git repositories.
+- **GitHub is NOT Required**: Projects in `workspaces/<project>/` do NOT need a GitHub remote — some will have remotes, some are purely local Jujutsu (`jj`) working copies / repositories.
 - **Docs are Part of the Project**: Documentation lives inside `workspaces/<project>/docs/`. There are **NO separate boards for docs**.
 - **Multi-Project Workflows**: When working across projects, pass `--project <project-name>` to the board CLI (or `--db boards/<project>.sqlite`).
 
@@ -137,15 +137,15 @@ node harness/engine/brain.mjs new --entity note --slug <slug> --description "<de
 
 | Zone | Purpose | Board Tracking | Version Control | Structure |
 | :--- | :--- | :--- | :--- | :--- |
-| **`projects/`** | **Local-Only Work** | **No Board** (Small, fast, lightweight) | Local Git/JJ (No remote) | Scratch scripts, one-off tools, rapid prototypes. Has `projects/<name>/src/` and `projects/<name>/docs/`. |
-| **`workspaces/`** | **Real Managed Projects & Source of Truth** | **Dedicated Board** (`boards/<project>.sqlite`) | Local JJ/Git (GitHub optional) | Real production codebases. **All platform development for Incubator v5 happens inside `workspaces/incubator-v5/`.** |
+| **`projects/`** | **Local-Only Work** | **No Board** (Small, fast, lightweight) | Local Jujutsu (`jj`, no remote) | Scratch scripts, one-off tools, rapid prototypes. Has `projects/<name>/src/` and `projects/<name>/docs/`. |
+| **`workspaces/`** | **Real Managed Projects & Source of Truth** | **Dedicated Board** (`boards/<project>.sqlite`) | Local Jujutsu (`jj`, GitHub remote optional) | Real production codebases. **All platform development for Incubator v5 happens inside `workspaces/incubator-v5/`.** |
 | **`harness/`** | **Deployed Runtime Environment** | Managed by Installer (`install.mjs`) | Deployed seat runtime | Installed tools, engines, and manuals. **NEVER edit files inside `harness/` directly!** |
 
 ### Platform Development & Dogfooding Invariant
 When developing, fixing, or extending Incubator v5 itself:
-1. **Work in `workspaces/incubator-v5/` FIRST**: All code, documentation, engine components, and harness templates (`components/harness/templates/`) MUST be developed, tested, and committed inside `workspaces/incubator-v5/`.
+1. **Work in `workspaces/incubator-v5/` FIRST**: All code, documentation, engine components, and harness templates (`components/harness/templates/`) MUST be developed, tested, and recorded in Jujutsu (`jj describe`) inside `workspaces/incubator-v5/`.
 2. **Never Edit Deployed Seat Files Directly**: Directly editing files in your seat home (`harness/`, `AGENTS.md`, `CLAUDE.md`) is a fatal failure mode. It bypasses the product repository, starves other fleet seats of updates, will be wiped out on the next harness install, and causes Incubator v5 to die.
-3. **Dogfood via `install.mjs`**: Once changes are verified and committed in `workspaces/incubator-v5/`, dogfood the update into your own seat (and target fleet seats) by running:
+3. **Dogfood via `install.mjs`**: Once changes are verified and recorded in Jujutsu inside `workspaces/incubator-v5/`, dogfood the update into your own seat (and target fleet seats) by running:
    ```bash
    node workspaces/incubator-v5/components/harness/tools/install.mjs <target-seat-path>
 4. **Role of Entrypoint Cards (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)**: Entrypoint cards establish the non-negotiable **Mandatory Bootstrap Protocol** that every incoming agent must execute before taking action (checking the board, locating the governing design blueprint in `docs/design/INDEX.md`, inspecting working memory, and loading the harness). Comprehensive operational teachings, tool references, and architecture details live here in `HARNESS.md`.
@@ -163,52 +163,59 @@ All major repositories in `workspaces/<project>/` maintain their documentation i
 ### Index Invariant
 Every tier directory (`system/`, `design/`, `support/`) **must contain an `INDEX.md`** table cataloging every file and its status.
 
+### Living Docs (`docs/system/`)
+`docs/system/` contains the enduring truth of the repository:
+- `ARCHITECTURE.md`: Current as-built subsystem architectures, lifecycle models, schemas, and invariants.
+- `MANUAL.md`: Operator and developer workflows, CLI commands, and flags.
+
+Design docs in `docs/design/` are transitional proposals. They cite `docs/system/` for context without duplicating it. When work lands, any enduring updates to system truth are folded into `docs/system/` in the same change.
+
 ---
 
-## 8. Workflow: Evergreen Design Docs & Task Cards
+## 8. Workflow: Design Doc Lifecycle & Jobs
 
-### The 2-Layer Hierarchy:
-1. **Evergreen Design Doc (`docs/design/<slug>.md`)**:
-   - The living architectural specification of a component or subsystem.
-   - **Design Doc States**:
-     - **`Open & Active`**: Currently has tasks planned, in-progress, or in-review. Work is actively being designed, implemented, or tested.
-     - **`Open & Inactive`**: All current tasks are `Done` (or no tasks are currently queued). The subsystem is stable, but the doc **remains Open and evergreen**. New tasks can be attached at any time to reactivate it.
-     - **`Closed & Inactive`**: Subsystem has been permanently decommissioned or superseded. **Only the human operator can mark a doc `Closed`**. Only closed docs can be archived.
-   - **The Non-Closing Invariant**: Having 0 tasks or finishing all tasks NEVER closes a doc—it simply shifts it from `Open & Active` to `Open & Inactive`. Agents are **STRICTLY FORBIDDEN** from marking a design doc `Closed` or archiving it.
-2. **Task Cards on the Project Board (`boards/<project>.sqlite`)**:
-   - Discrete, actionable units of work added under the component's design doc (`--doc <slug>`).
-   - Tasks transition cleanly through: `Planned` -> `In Progress` -> `In Review` -> `Done`.
-   - **Tasks are NEVER marked "Closed"** (`Closed` is a design doc lifecycle state, not a task state).
+### 8.1 Lifecycle
+A design doc is a transitional proposal for non-obvious work that closes itself when completed:
 
-### Pair Programming Protocol:
-1. **Author the Evergreen Design Doc**: Reference or create `docs/design/<slug>.md` following `templates/epic.template.md`, structure phases into `## Implementation Milestones`, and register in `docs/design/INDEX.md`.
-2. **Atomic Board Scaffolding (`sync-doc`)**: In the exact same turn, run `node harness/components/board/tools/board.mjs sync-doc <slug> --project <project>`. This parses the milestones checklist, registers the doc on the board, and auto-scaffolds milestone tasks. Never leave a design doc on disk without syncing its task cards to the board.
-3. **Milestone 1 Protocol (Setup & Alignment)**:
-   - Milestone 1 is ALWAYS: `Milestone 1: Setup the design doc and tasks`.
-   - Milestone 1 authors the design doc, registers it in `INDEX.md`, and auto-scaffolds the tasks to the board (`board sync-doc`).
-   - Attach the detailed implementation plan to Milestone 1: `node harness/components/board/tools/board.mjs set <id> --details "<plan>"`.
-   - Move Milestone 1 to `🔍 In-Review`: `node harness/components/board/tools/board.mjs set <id> --status review`.
-   - Commit the design revision cleanly in Jujutsu (`jj describe -m "..." && jj bookmark set main -r @ && jj new`).
-   - Yield the turn to the operator for architectural alignment and review before moving to execution.
-4. **Fast, Collaborative Pair Programming**:
-   - No artificial permission gates or bureaucracy.
-   - Tasks transition through: `⏳ Planned` -> `⚡ In-Progress` -> `🔍 In-Review` -> `✅ Done`.
-   - To start a task: `node harness/components/board/tools/board.mjs set <id> --status in-progress`.
-   - Implement changes, run tests (`npm test`), and visually inspect UI in Chrome via DevTools MCP.
-   - When ready for operator review: `node harness/components/board/tools/board.mjs set <id> --status review`.
-   - Once verified and approved: `node harness/components/board/tools/board.mjs set <id> --status done`.
-5. **Fold-Back on Landing**: Update `docs/system/ARCHITECTURE.md` if schemas changed, and update the evergreen design doc (`docs/design/<slug>.md`). The doc shifts from `Open & Active` to `Open & Inactive`.
+```
+Open & Active    tasks exist and at least one is not Done
+Open & Inactive  a doc with zero tasks (just authored, or all tasks deleted)
+Closed           tasks exist and all are Done          <- set by the board engine, not by hand
+```
 
-### Adding New Work to an Existing Design Doc (Rounds)
-A design doc is the source of understanding for its area. Read it first, then extend it. Never rewrite it from scratch.
-- **Architecture sections describe the current state**: Context, Goals, Design, and Verification are edited in place so they always match the shipped system. Update them when a round lands.
-- **Milestones are the work history**: `## Implementation Milestones` holds one `### Round N — YYYY-MM-DD: <title>` block per round of work. Append a new round for new work. **Never delete, reorder, or edit earlier rounds** — checked-off milestones stay as the record of what was built and why.
-- **Every round starts with Milestone 1: Setup**: The Milestone 1 Protocol above applies to each round (attach the plan, move to In-Review, yield for alignment).
-- **Then sync**: Run `board sync-doc <slug>` in the same turn. It scaffolds only the new round's unchecked milestones; existing tasks are untouched.
-- **Bloat means a new doc**: When a doc grows past a handful of rounds or the architecture sections no longer read as one design, author a new design doc for the new direction, link the two in `INDEX.md`, and leave the old doc Open & Inactive. Only the operator closes a doc.
+When the last job attached to a design doc is marked Done:
+- The board engine automatically marks the doc `Closed`.
+- Moves the markdown file to `docs/design/archive/<slug>.md`.
+- Rewrites `docs/design/INDEX.md` so active tables only list work in flight.
+- If a task is reopened or added later, the doc automatically unarchives back to `Open & Active`.
 
-### UX Execution Standard: Never Build Blind
-All UX, frontend, web viewer, and UI tasks must be done with Chrome to check as you create. UXs should never be built blind:
+### 8.2 The Procedure, End to End
+```
+1. Read docs/system/ for the area.           (context, cite it, do not copy it)
+2. Write docs/design/<slug>.md from template; register in docs/design/INDEX.md.
+3. board sync-doc <slug>  -> one job per milestone; Milestone 1 to In-Review; operator reviews & approves.
+4. Work the milestones:   plan and code in whatever chunking makes sense.
+5. Living docs milestone: update docs/system/ in the same change.
+6. Verification milestone: npm test green, new tests, Chrome check for UI.
+7. Land milestone:         describe change (jj describe), advance main bookmark (jj bookmark set main -r @), push (jj git push), dogfood harness.
+   Marking it Done closes the doc: Status -> Closed, file moved to docs/design/archive/,
+   INDEX.md row moved to the archive table. Nothing for the operator to do.
+```
+
+### 8.3 Google-Style Design Philosophy
+A design doc follows Google's engineering culture (Ubl, *Design Docs at Google*; *Software Engineering at Google* ch. 10):
+- **A design doc is informal**: The template is an outline, not a form. Use the sections that help and drop the ones that do not.
+- **It says what and why, and weighs trade-offs**: Context and scope, goals and non-goals, design, alternatives considered, anything cross-cutting like security or data. Sketches of APIs and data, not full definitions. No pseudo-code, no step lists. If it starts to read like an implementation manual, stop.
+- **It is updated while work lands**: Reality corrects the proposal. When the last job is done, it closes and stays in the archive as the record of why.
+- **Do not write one for obvious work**: Obvious work, small tweaks, and bug fixes use a standalone job or direct code. Work is work.
+- **The doc owns the shape; the worker owns the build**: Plan and code in whatever order and size works.
+
+### 8.4 Job Vocabulary
+- A card on the board is a **job** (or task).
+- A card without a governing design doc is a **standalone job**.
+
+### 8.5 Interactive Verification with Chrome
+Work on UX, frontend, web viewer, and UI flows with Chrome to check as you create:
 - **Live Chrome Inspection**: Launch and inspect the interface in Chrome (using DevTools or browser subagents) continuously as you create, style, and structure elements.
 - **Interactive Verification**: Actively exercise interactive flows (clicking buttons, switching tabs/views, modal/dropdown states, live data reloads) in the browser before marking any UX task complete.
 - **Visual Integrity & Polish**: Confirm layouts, spacing, color contrasts, typography, and responsive resizing visually in the live browser rather than assuming static correctness.
@@ -276,13 +283,13 @@ node harness/components/sweeper/tools/sweep.mjs --target <target> --deep --effor
 For all workspace repositories, follow the **Feature Change + Fast-Forward Main** standard:
 
 ```bash
-# 1. Start a focused change off main with a descriptive commit message
+# 1. Start a focused change off main with a descriptive change summary
 jj new main -m "feat(area): short description"
 
 # 2. Develop and test in the working copy
 npm test
 
-# 3. Advance / fast-forward main bookmark to the verified commit
+# 3. Advance / fast-forward main bookmark to the verified change revision
 jj bookmark set main -r @
 
 # 4. Open a clean next working copy for subsequent work
@@ -290,5 +297,5 @@ jj new
 ```
 
 **Why this standard**:
-- Keeps a clean, bisectable, linear Git history without redundant merge commit bubbles.
+- Keeps a clean, bisectable, linear history without redundant merge bubbles, while tracking revisions cleanly in Jujutsu.
 - Preserves full Jujutsu change isolation, revision tracking, and `jj undo` safety during development.

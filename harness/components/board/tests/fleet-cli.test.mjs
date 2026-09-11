@@ -88,7 +88,7 @@ test('fleet CLI: local mode manages agents, projects, and token lifecycle', asyn
       ]
     );
     assert.match(addOut, /Registered new agent seat: Example PA \(example-pa\)/);
-    assert.match(addOut, /agt_live_example-pa_/);
+    assert.match(addOut, /agt_live_falcon-pa_/);
 
     // Verify persisted roster
     const rosterAfterAdd = JSON.parse(fs.readFileSync(rosterPath, 'utf8'));
@@ -124,7 +124,7 @@ test('fleet CLI: local mode manages agents, projects, and token lifecycle', asyn
       [CLI_PATH, 'token', 'example-pa', '--rotate', '--roster', rosterPath, '--boards-dir', boardsDir]
     );
     assert.match(rotateOut, /Rotated Token for Agent: example-pa/);
-    assert.match(rotateOut, /agt_live_example-pa_/);
+    assert.match(rotateOut, /agt_live_falcon-pa_/);
 
     // 7. Remove agent
     const { stdout: removeOut } = await pExec(
@@ -230,6 +230,22 @@ test('fleet CLI: remote HTTP mode communicates with Board Server REST API', asyn
     );
     assert.match(verifyOut, /Verified agent "sweeper-bot"/);
     assert.match(verifyOut, /Status: ONLINE/);
+
+    // 5b. Remote verify using FALCON_BOARD_TOKEN environment variable (Task #168)
+    const { stdout: verifyEnvOut } = await pExec(
+      process.execPath,
+      [CLI_PATH, 'verify', 'sweeper-bot'],
+      {
+        env: {
+          ...process.env,
+          FALCON_BOARD_URL: serverUrl,
+          FALCON_BOARD_TOKEN: operatorToken,
+          FALCON_ENV_LOADED: '1'
+        }
+      }
+    );
+    assert.match(verifyEnvOut, /Verified agent "sweeper-bot"/);
+    assert.match(verifyEnvOut, /Status: ONLINE/);
 
     // 6. Remote rotate token
     const { stdout: rotateOut } = await pExec(

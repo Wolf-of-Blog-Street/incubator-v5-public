@@ -1,90 +1,51 @@
-# [Epic Title]
+# [Proposal Title]
 
-- **Status**: [Draft | In-Progress | Review | Done]
+- **Codename**: [Auto-assigned or e.g. #d-10]
+- **Status**: Open & Active
 - **Author**: [Author Name / Agent]
-- **Target Component(s)**: [e.g. src/core, tools/cli]
+- **Target Component(s)**: [e.g. components/board, components/harness]
 - **Last Updated**: YYYY-MM-DD
 
 ---
 
-## 1. Context & Problem Statement
-*Describe the problem being solved, the motivation, and background context in 1–2 paragraphs.*
+## 1. Context & Scope
+*Describe the problem being solved, the motivation, and architectural background in 1–2 concise paragraphs. Cite relevant living docs in `docs/system/` rather than duplicating them.*
 
 ---
 
 ## 2. Goals & Explicit Non-Goals
 * **Goals**:
-  - [ ] Goal 1: Specific functional or operational requirement.
-  - [ ] Goal 2: Measurable performance or reliability target.
+  - Goal 1: Specific functional or operational capability.
+  - Goal 2: Measurable performance, safety, or quality target.
 * **Non-Goals**:
-  - Out-of-scope boundary 1 (e.g. "No UI changes in this epic; CLI only").
+  - Out-of-scope boundary 1 (e.g. "No changes to existing task schema").
   - Out-of-scope boundary 2 (e.g. "No external service dependencies; keep in-process").
 
 ---
 
-## 3. Data Models & Interface Contracts
-*Define all schemas and interfaces before writing implementation code.*
-
-### 3.1 Data Schemas / Storage
-```sql
--- Schema or JSON payload format
-CREATE TABLE example_entity (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-```
-
-### 3.2 CLI & API Contracts
-```bash
-# Command line interface specification
-node bin/cli.mjs --input <path> --concurrency <number>
-```
-* **Inputs**: Required arguments and environment variables.
-* **Outputs**: Expected stdout shape or JSON return object.
+## 3. Alternatives Considered
+*Compare 2–3 viable approaches and state trade-offs explicitly (why the chosen path is preferred).*
+1. **Approach A (Status Quo / Baseline)**: Trade-offs and reasons discarded.
+2. **Approach B (Alternative Architecture)**: Trade-offs and reasons discarded.
+3. **Approach C (Chosen Proposal)**: Why this delivers the best balance of simplicity, safety, and velocity.
 
 ---
 
-## 4. Implementation Milestones
-*Break the work down into 3–5 bite-sized, sequential phases. Milestone 1 is ALWAYS "Setup the design doc and tasks". When authoring is complete and tasks are synced to the board, Milestone 1 moves to 🔍 In-Review for operator alignment before proceeding to implementation.*
-*This section is the work history of the area. New work is appended as a new `### Round N — YYYY-MM-DD: <title>` block. Earlier rounds are never deleted or edited.*
+## 4. Design
+*Sketches of interfaces, data flow, and subsystem interactions. Focus on what and why, not pseudo-code or line-by-line procedures. If it starts to read like an implementation manual, stop.*
 
-### Round 1 — YYYY-MM-DD: Initial build
+---
+
+## 5. Implementation Milestones
+*Break work down into sequential milestones. A line or two under each milestone is its brief; `sync-doc` copies it into the job's details.*
 
 - [ ] **Milestone 1: Setup the design doc and tasks**
-  - Task 1.1: Author technical design specification in `docs/design/<slug>.md`.
-  - Task 1.2: Register in `INDEX.md`, scaffold tasks on Falcon Board (`board sync-doc <slug>`).
-  - Task 1.3: Move Task 1 to `🔍 In-Review` to signal operator review and alignment.
-- [ ] **Milestone 2: Schemas & Data Layer**
-  - Task 2.1: Create data schemas / access methods.
-  - Task 2.2: Add contract tests against fixtures.
-- [ ] **Milestone 3: Core Engine & Business Logic**
-  - Task 3.1: Implement processing engine / worker handlers.
-  - Task 3.2: Wire CLI and tools.
-- [ ] **Milestone 4: Verification, Living Docs & Landing**
-  - Task 4.1: Run test suite verification (`npm test`).
-  - Task 4.2: Update living documentation in `system/` and request operator review.
-
----
-
-## 5. Verification Plan
-*Specific, executable commands to verify that the feature works as intended.*
-
-### 5.1 Automated Tests
-```bash
-npm test tests/path/to/test.mjs
-```
-
-### 5.2 Manual / Smoke Verification
-```bash
-# Command to run and expected output
-node bin/cli.mjs --sample
-```
-
----
-
-## 6. Living Docs Update Plan
-*Specify what changes will be folded into living docs upon completion:*
-- [ ] **`system/ARCHITECTURE.md`**: Update architecture diagram / schema notes.
-- [ ] **`system/MANUAL.md`**: Add new CLI command reference and examples.
-- [ ] **Archive**: Move this document to `design/archive/<slug>.md` and update `design/INDEX.md`.
+  - Author this proposal in `docs/design/<slug>.md`, register in `INDEX.md`, sync to board (`board sync-doc <slug>`), and move Milestone 1 to In-Review for operator alignment.
+- [ ] **Milestone 2: [Core Work Milestone]**
+  - Brief describing deliverables and implementation steps for this milestone.
+- [ ] **Milestone 3: Living docs**
+  - Fold changes to system truth, schemas, or operational manuals into `docs/system/ARCHITECTURE.md` and `MANUAL.md`.
+- [ ] **Milestone 4: Verification**
+  - Automated tests passing (`npm test`), new unit/contract tests, and interactive UI verification in Chrome if applicable.
+- [ ] **Milestone 5: Land**
+  - Commit revision, update main bookmark, push, and dogfood seat. Marking Done closes and archives this proposal automatically.

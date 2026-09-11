@@ -20,12 +20,19 @@ import {
   dispatchFriend,
   isJjRepository
 } from '../engine/friends.mjs';
+import { openAccountStore, maskSecret } from '../engine/accounts.mjs';
+import { auditAuthHealth, refreshAccountToken, autoRenewExpiringAccounts } from '../engine/refresh.mjs';
 
 function parseArgs(rawArgs) {
   const args = {
     command: null,
+    subcommand: null,
     provider: null,
     prompt: null,
+    apiKey: null,
+    label: null,
+    agentId: null,
+    thresholdMinutes: 30,
     json: false,
     noJj: false,
     autoAbandon: false,
@@ -34,6 +41,7 @@ function parseArgs(rawArgs) {
     timeoutMs: 180000,
     cwd: process.cwd(),
     configPath: null,
+    accountsPath: null,
     extraFlags: []
   };
 
@@ -50,12 +58,22 @@ function parseArgs(rawArgs) {
       args.model = rawArgs[++i] || null;
     } else if (arg === '-e' || arg === '--effort') {
       args.effort = rawArgs[++i] || null;
+    } else if (arg === '--api-key') {
+      args.apiKey = rawArgs[++i] || null;
+    } else if (arg === '--label') {
+      args.label = rawArgs[++i] || null;
+    } else if (arg === '--agent' || arg === '--agent-id') {
+      args.agentId = rawArgs[++i] || null;
+    } else if (arg === '--threshold') {
+      args.thresholdMinutes = parseInt(rawArgs[++i], 10) || 30;
     } else if (arg === '--timeout') {
       args.timeoutMs = rawArgs[i + 1] ? (parseInt(rawArgs[++i], 10) || 180000) : 180000;
     } else if (arg === '--cwd') {
       args.cwd = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : process.cwd();
     } else if (arg === '--config') {
       args.configPath = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
+    } else if (arg === '--accounts') {
+      args.accountsPath = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
     } else if (arg === '-p' || arg === '--prompt') {
       args.prompt = rawArgs[++i] || null;
     } else if (arg.startsWith('-')) {
@@ -66,9 +84,14 @@ function parseArgs(rawArgs) {
   }
 
   args.command = positional[0] || 'help';
-  args.provider = positional[1] || null;
-  if (!args.prompt && positional.length > 2) {
-    args.prompt = positional.slice(2).join(' ');
+  if (args.command === 'accounts') {
+    args.subcommand = positional[1] || 'list';
+    args.provider = positional[2] || null;
+  } else {
+    args.provider = positional[1] || null;
+    if (!args.prompt && positional.length > 2) {
+      args.prompt = positional.slice(2).join(' ');
+    }
   }
 
   return args;
@@ -79,27 +102,37 @@ function printHelp() {
 🤝 Incubator v5 Friends CLI (friend.mjs)
 
 Commands:
-  list                          List available friend providers and binary availability
-  check <friend>                Verify installation and binary status of a friend
-  run <friend> "<prompt>"       Dispatch a friend inside an isolated Jujutsu revision (jj new)
+  list                                List available friend providers and binary availability
+  check <friend>                      Verify installation and binary status of a friend
+  run <friend> "<prompt>"             Dispatch a friend inside an isolated Jujutsu revision (jj new)
+
+Account Management:
+  accounts list [--json]              List configured accounts in the pool
+  accounts add <provider> --api-key <key> [--label <l>] [--agent <a>]
+                                      Register an API key account in the safe pool
+  accounts check [--threshold <min>]  Audit token TTL and health status across the pool
+  accounts refresh [accountId]        Trigger proactive renewal for expiring tokens
 
 Options:
-  -p, --prompt <text>           The prompt or mandate to execute
-  -m, --model <name>            Override default model (e.g. gpt-6-astra, sonnet)
-  -e, --effort <level>          Override reasoning effort (e.g. high, ultra)
-  --no-jj                       Bypass Jujutsu change isolation (execute in current working copy)
-  --auto-abandon                Abandon the Jujutsu change if execution fails
-  --timeout <ms>                Process execution timeout in milliseconds (default: 180000)
-  --cwd <path>                  Target working directory (default: current directory)
-  --config <path>               Custom friends.json catalog path
-  --json                        Output JSON formatted results
-  --help                        Display this help text
+  -p, --prompt <text>                 The prompt or mandate to execute
+  -m, --model <name>                  Override default model (e.g. gpt-6-astra, sonnet)
+  -e, --effort <level>                Override reasoning effort (e.g. high, ultra)
+  --no-jj                             Bypass Jujutsu change isolation (execute in current working copy)
+  --auto-abandon                      Abandon the Jujutsu change if execution fails
+  --timeout <ms>                      Process execution timeout in milliseconds (default: 180000)
+  --cwd <path>                        Target working directory (default: current directory)
+  --config <path>                     Custom friends.json catalog path
+  --accounts <path>                   Custom accounts.json storage path
+  --json                              Output JSON formatted results
+  --help                              Display this help text
 
 Examples:
   friend list
   friend check codex
   friend run claude "Audit server.mjs for race conditions"
-  friend run codex "Design custom schema for Sol Ultra" --model gpt-6-astra --effort high
+  friend accounts list
+  friend accounts add claude --api-key sk-ant-12345 --label "Primary Claude Key"
+  friend accounts check
 `);
 }
 
@@ -249,6 +282,121 @@ async function handleRun(args) {
   }
 }
 
+async function handleAccounts(args) {
+  const store = openAccountStore({ storagePath: args.accountsPath });
+  const sub = args.subcommand || 'list';
+
+  if (sub === 'list') {
+    const accounts = store.listAccounts({
+      provider: args.provider,
+      agentId: args.agentId,
+      includeSecrets: false
+    });
+
+    if (args.json) {
+      console.log(JSON.stringify(accounts, null, 2));
+      return 0;
+    }
+
+    console.log(`\n🔑 Incubator v5 Configured Accounts (${accounts.length} total)`);
+    console.log(`Storage: ${store.getStoragePath()}\n`);
+
+    if (accounts.length === 0) {
+      console.log(`No accounts configured. Add one with:`);
+      console.log(`  friend accounts add <provider> --api-key <key> [--label <label>]\n`);
+      return 0;
+    }
+
+    for (const a of accounts) {
+      const statusIcon = a.status === 'healthy' ? '🟢' : a.status === 'cooling' ? '⏳' : a.status === 'expiring_soon' ? '⚠️' : '🔴';
+      const keySnippet = a.credentials.apiKey || a.credentials.oauth?.accessToken || 'none';
+      console.log(`${statusIcon} [${a.id}] ${a.label}`);
+      console.log(`   Provider: ${a.provider} (${a.type}) | Status: ${a.status}`);
+      console.log(`   Credential: ${keySnippet}`);
+      console.log(`   Assigned Agents: ${a.assignedAgents.join(', ')}`);
+      if (a.coolingUntil) console.log(`   Cooling Until: ${new Date(a.coolingUntil).toLocaleTimeString()}`);
+      if (a.lastUsedAt) console.log(`   Last Used: ${new Date(a.lastUsedAt).toLocaleString()}`);
+      console.log();
+    }
+    return 0;
+  }
+
+  if (sub === 'add') {
+    if (!args.provider) {
+      console.error(`❌ Provider required. Example: friend accounts add claude --api-key sk-...`);
+      return 1;
+    }
+    if (!args.apiKey) {
+      console.error(`❌ --api-key <key> is required to add an account`);
+      return 1;
+    }
+
+    const assigned = args.agentId ? [args.agentId] : ['all'];
+    const created = store.addAccount({
+      provider: args.provider,
+      type: 'api_key',
+      label: args.label || `${args.provider} (${maskSecret(args.apiKey)})`,
+      credentials: { apiKey: args.apiKey },
+      assignedAgents: assigned
+    });
+
+    if (args.json) {
+      console.log(JSON.stringify(created, null, 2));
+    } else {
+      console.log(`\n✅ Account added successfully!`);
+      console.log(`   ID: ${created.id}`);
+      console.log(`   Provider: ${created.provider}`);
+      console.log(`   Label: ${created.label}`);
+      console.log(`   Assigned Agents: ${created.assignedAgents.join(', ')}\n`);
+    }
+    return 0;
+  }
+
+  if (sub === 'check') {
+    const audit = auditAuthHealth(store, { thresholdMinutes: args.thresholdMinutes });
+    if (args.json) {
+      console.log(JSON.stringify(audit, null, 2));
+      return 0;
+    }
+
+    console.log(`\n🛡️ Incubator v5 Auth Health Audit (${audit.total} accounts)`);
+    console.log(`Timestamp: ${audit.timestamp}`);
+    console.log(`──────────────────────────────────────────────────────────────────────────────`);
+    console.log(`   Healthy:        ${audit.healthy}`);
+    console.log(`   Expiring Soon:  ${audit.expiringSoon}`);
+    console.log(`   Cooling (429):  ${audit.cooling}`);
+    console.log(`   Expired (TTL):  ${audit.expired}`);
+    console.log(`   Revoked (401):  ${audit.revoked}`);
+    console.log(`──────────────────────────────────────────────────────────────────────────────\n`);
+
+    for (const a of audit.accounts) {
+      const icon = a.status === 'healthy' ? '🟢' : a.status === 'cooling' ? '⏳' : a.status === 'expiring_soon' ? '⚠️' : '🔴';
+      const ttl = a.remainingMinutes !== null ? `${a.remainingMinutes}m remaining` : 'permanent (api_key)';
+      console.log(`${icon} [${a.id}] ${a.label} (${a.provider}) — ${a.status} [${ttl}]`);
+    }
+    console.log();
+    return 0;
+  }
+
+  if (sub === 'refresh') {
+    const results = await autoRenewExpiringAccounts(store, { thresholdMinutes: args.thresholdMinutes });
+    if (args.json) {
+      console.log(JSON.stringify(results, null, 2));
+    } else {
+      console.log(`\n🔄 Token Renewal Sweep Completed (${results.length} accounts processed)`);
+      for (const r of results) {
+        const icon = r.success ? '✅' : '❌';
+        console.log(`${icon} [${r.account.id}] renewed: ${r.renewed}${r.reason ? ` (${r.reason})` : ''}`);
+      }
+      console.log();
+    }
+    return 0;
+  }
+
+  console.error(`❌ Unknown accounts subcommand "${sub}". Available: list, add, check, refresh`);
+  return 1;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -261,6 +409,9 @@ async function main() {
       break;
     case 'run':
       process.exit(await handleRun(args));
+      break;
+    case 'accounts':
+      process.exit(await handleAccounts(args));
       break;
     case 'help':
     default:

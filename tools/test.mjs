@@ -37,6 +37,13 @@ const TEST_REGISTRY = [
   },
   {
     tier: 1,
+    name: 'doc-lifecycle-autoclose',
+    component: 'board',
+    path: 'components/board/tests/doc-lifecycle-autoclose.test.mjs',
+    desc: 'Design doc auto-close on all tasks done, archive move, index rewrite, reopen, and brief extraction'
+  },
+  {
+    tier: 1,
     name: 'friends-sandbox',
     component: 'friends',
     path: 'components/friends/tests/sandbox.test.mjs',
@@ -69,13 +76,6 @@ const TEST_REGISTRY = [
     component: 'sweeper',
     path: 'components/sweeper/tests/story-sweeper.test.mjs',
     desc: 'Markdown design doc user story parsing and intent extraction'
-  },
-  {
-    tier: 1,
-    name: 'sweeper-saas-guards',
-    component: 'sweeper',
-    path: 'components/sweeper/tests/saasGuards.test.mjs',
-    desc: 'Static tenant isolation, secret masking, and idempotency audit contracts'
   },
   {
     tier: 1,

@@ -1,15 +1,74 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function resolvePackageVersion(sourceDir) {
+  let dir = path.resolve(sourceDir);
+  while (dir && dir !== path.dirname(dir)) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (pkg.version) return pkg.version;
+      } catch {}
+    }
+    const manifestPath = path.join(dir, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const mf = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (mf.harness_version) return mf.harness_version;
+        if (mf.incubator_release) return mf.incubator_release.replace(/^v/, '');
+      } catch {}
+    }
+    dir = path.dirname(dir);
+  }
+  return 'unknown';
+}
+
+function resolveSourceRevision(sourceDir) {
+  try {
+    const out = execSync(`jj log -r @ -n 1 --no-graph -T 'if(empty, parents.map(|p| p.commit_id().shortest(8)).join(" "), commit_id.shortest(8))'`, {
+      cwd: sourceDir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8'
+    }).trim();
+    if (out) return out;
+  } catch {}
+
+  try {
+    const out = execSync('git rev-parse --short HEAD', {
+      cwd: sourceDir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8'
+    }).trim();
+    if (out) return out;
+  } catch {}
+
+  let dir = path.resolve(sourceDir);
+  while (dir && dir !== path.dirname(dir)) {
+    const manifestPath = path.join(dir, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const mf = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (mf.source_revision) return mf.source_revision;
+      } catch {}
+    }
+    dir = path.dirname(dir);
+  }
+
+  return 'unknown';
+}
+
 function resolveSources() {
   const devRoot = path.resolve(__dirname, '../../..');
   if (fs.existsSync(path.join(devRoot, 'components'))) {
     return {
+      sourceDir: devRoot,
       harnessTemplate: path.join(devRoot, 'components/harness/templates/HARNESS.md.template'),
       customTemplate: path.join(devRoot, 'components/harness/templates/HARNESS-custom.md.template'),
       cardTemplate: path.join(devRoot, 'components/harness/templates/AGENTS.md.template'),
@@ -26,6 +85,7 @@ function resolveSources() {
   // Running from an installed harness: <seat>/harness/components/harness/tools
   const harnessHome = path.resolve(__dirname, '../../..');
   return {
+    sourceDir: harnessHome,
     harnessTemplate: path.join(harnessHome, 'HARNESS.md'),
     customTemplate: path.join(harnessHome, 'HARNESS-custom.md'),
     cardTemplate: path.join(harnessHome, 'components/harness/templates/AGENTS.md.template'),
@@ -46,7 +106,7 @@ function resolveSources() {
  * @param {boolean} [options.initCards] - Whether to create entry AGENTS.md / CLAUDE.md cards
  * @param {Object} [options.env] - Optional key-value pairs for harness/falcon.env
  */
-export function installHarness({ agentHome, initCards = false, upgradeCards = false, env = null }) {
+export async function installHarness({ agentHome, initCards = false, upgradeCards = false, env = null, roster = null, rosterPath = null }) {
   if (!agentHome) throw new Error('agentHome is required');
 
   const resolvedHome = path.resolve(agentHome);
@@ -145,7 +205,7 @@ export function installHarness({ agentHome, initCards = false, upgradeCards = fa
   if (initCards || upgradeCards) {
     const cardContent = fs.existsSync(sources.cardTemplate)
       ? fs.readFileSync(sources.cardTemplate, 'utf8')
-      : `# Agent Entrypoint — Incubator v5\n\nYou are an autonomous engineering agent operating within the **Incubator v5** multi-agent platform.\n\n## ⚠️ Mandatory Bootstrap Protocol (Execute Before Any Planning or Code Changes)\n\nWhen you receive ANY user task, feature request, inquiry, or bug report, you must follow this strict sequence:\n\n1. **Step 1: Check the Board & Design Specs First (NO UNATTACHED WORK)**\n   - Query the project board (\`node harness/components/board/tools/board.mjs list\` or SQLite board in \`boards/\`) to inspect active epics and tasks.\n   - Inspect \`docs/design/INDEX.md\` to identify the governing living architectural blueprint (\`#d-X\`) for the affected subsystem.\n   - **Crucial Invariant**: NEVER formulate an implementation plan, write code, or execute tool changes without anchoring to a governing Design Doc and task on the board. If no design doc or task exists for the requested work, scaffold the design doc first or register a task before proceeding.\n\n2. **Step 2: Read Brain & Active Working Memory**\n   - Check your persistent brain memory (\`brain/__source/working-memory.md\` or \`node harness/engine/brain.mjs list\`) to ground yourself in the current state of play and recent operator decisions.\n\n3. **Step 3: Read Harness Rules & Preferences**\n   - Read [harness/HARNESS.md](harness/HARNESS.md) to understand workspace topology, tool usage, Google 3-tier testing standards, and execution pipelines (e.g., pair vs blitz).\n   - Read [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for custom operator preferences.\n`;
+      : `# Agent Entrypoint — Incubator v5\n\nWelcome to **Incubator v5**. You are an engineer pair programming with the operator.\n\n## Orientation & Workflow\n\nWhen starting a session or picking up work:\n\n1. **Check Context & The Board**:\n   - Inspect the board (\`node harness/components/board/tools/board.mjs list\`) to see active jobs.\n   - Check \`docs/design/INDEX.md\` to see proposals in flight. For non-trivial architectural changes, write or update a design proposal. For obvious work, small tweaks, or bug fixes, work directly or use a standalone job. Work is work.\n2. **Check Memory**: Read \`brain/__source/working-memory.md\` to ground yourself in recent decisions.\n3. **Master Manual**: Refer to [harness/HARNESS.md](harness/HARNESS.md) and [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for tool usage, testing standards, and operator preferences.\n`;
     for (const card of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']) {
       const cardPath = path.join(resolvedHome, card);
       if (upgradeCards || !fs.existsSync(cardPath)) {
@@ -174,7 +234,93 @@ export function installHarness({ agentHome, initCards = false, upgradeCards = fa
     try { fs.chmodSync(envPath, 0o600); } catch {}
   }
 
-  return { agentHome: resolvedHome, harnessDir };
+  // 10. Write harness/manifest.json (Task #167)
+  let seatId = env?.FALCON_AGENT_ID || null;
+  const falconEnvPath = path.join(harnessDir, 'falcon.env');
+  if (!seatId && fs.existsSync(falconEnvPath)) {
+    try {
+      const lines = fs.readFileSync(falconEnvPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('FALCON_AGENT_ID=')) {
+          seatId = trimmed.slice('FALCON_AGENT_ID='.length).trim();
+          break;
+        }
+      }
+    } catch {}
+  }
+  if (!seatId) seatId = path.basename(resolvedHome);
+
+  const harnessVersion = resolvePackageVersion(sources.sourceDir);
+  const sourceRevision = resolveSourceRevision(sources.sourceDir);
+  const manifestData = {
+    harness_version: harnessVersion,
+    source_revision: sourceRevision,
+    installed_at: new Date().toISOString(),
+    seat: seatId
+  };
+
+  const manifestPath = path.join(harnessDir, 'manifest.json');
+  try {
+    const lstat = fs.lstatSync(manifestPath);
+    if (lstat.isSymbolicLink()) fs.unlinkSync(manifestPath);
+  } catch {}
+  fs.writeFileSync(manifestPath, JSON.stringify(manifestData, null, 2) + '\n', 'utf8');
+
+  // 11. Update roster with harness_version (Task #167)
+  if (roster && typeof roster.updateAgent === 'function') {
+    try {
+      roster.updateAgent(seatId, { harness_version: harnessVersion });
+    } catch {}
+  } else if (rosterPath && fs.existsSync(rosterPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(rosterPath, 'utf8'));
+      if (Array.isArray(raw.agents)) {
+        const ag = raw.agents.find(a => a.id === seatId);
+        if (ag) {
+          ag.harness_version = harnessVersion;
+          fs.writeFileSync(rosterPath, JSON.stringify(raw, null, 2), 'utf8');
+        }
+      }
+    } catch {}
+  }
+
+  let boardUrl = env?.FALCON_BOARD_URL || process.env.FALCON_BOARD_URL;
+  let boardToken = env?.FALCON_BOARD_TOKEN || process.env.FALCON_BOARD_TOKEN;
+  let targetAgentId = env?.FALCON_AGENT_ID || process.env.FALCON_AGENT_ID;
+
+  if (fs.existsSync(falconEnvPath)) {
+    try {
+      const lines = fs.readFileSync(falconEnvPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const [k, ...vParts] = trimmed.split('=');
+        const v = vParts.join('=');
+        if (k === 'FALCON_BOARD_URL' && !boardUrl) boardUrl = v;
+        if (k === 'FALCON_BOARD_TOKEN' && !boardToken) boardToken = v;
+        if (k === 'FALCON_AGENT_ID' && !targetAgentId) targetAgentId = v;
+      }
+    } catch {}
+  }
+
+  const effectiveAgentId = targetAgentId || seatId;
+  if (boardUrl && boardToken && effectiveAgentId) {
+    try {
+      const endpoint = `${boardUrl.replace(/\/$/, '')}/api/v1/admin/agents/${effectiveAgentId}`;
+      await fetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${boardToken}`
+        },
+        body: JSON.stringify({ harness_version: harnessVersion }),
+        signal: AbortSignal.timeout(3000)
+      });
+    } catch {}
+  }
+
+  return { agentHome: resolvedHome, harnessDir, manifest: manifestData };
 }
 
 // CLI Mode
@@ -183,7 +329,7 @@ if (process.argv[1] === __filename) {
   const initCards = process.argv.includes('--init-cards');
   const upgradeCards = process.argv.includes('--upgrade-cards') || process.argv.includes('--force-cards');
 
-  installHarness({ agentHome: targetHome, initCards, upgradeCards });
+  await installHarness({ agentHome: targetHome, initCards, upgradeCards });
   console.log(`✅ Successfully installed Incubator v5 harness into: ${targetHome}/harness`);
 }
 

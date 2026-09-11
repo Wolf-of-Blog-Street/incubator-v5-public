@@ -34,6 +34,12 @@ export function scaffoldDocs({ targetDir, projectName, projectSlug, description 
     const stat = fs.statSync(srcPath);
 
     if (stat.isDirectory()) {
+      try {
+        const lstat = fs.lstatSync(destPath);
+        if (lstat.isSymbolicLink()) {
+          fs.unlinkSync(destPath);
+        }
+      } catch {}
       fs.mkdirSync(destPath, { recursive: true });
       for (const child of fs.readdirSync(srcPath)) {
         copyAndRender(path.join(srcPath, child), path.join(destPath, child));
@@ -47,7 +53,21 @@ export function scaffoldDocs({ targetDir, projectName, projectSlug, description 
         ? destPath.slice(0, -9)
         : destPath;
 
-      fs.mkdirSync(path.dirname(finalDest), { recursive: true });
+      const parent = path.dirname(finalDest);
+      try {
+        const pstat = fs.lstatSync(parent);
+        if (pstat.isSymbolicLink()) {
+          fs.unlinkSync(parent);
+        }
+      } catch {}
+      fs.mkdirSync(parent, { recursive: true });
+
+      try {
+        const lstat = fs.lstatSync(finalDest);
+        if (lstat.isSymbolicLink()) {
+          fs.unlinkSync(finalDest);
+        }
+      } catch {}
       fs.writeFileSync(finalDest, content, 'utf8');
     }
   }

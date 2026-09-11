@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { reconcileDocStatusSync } from '../api/services/docService.mjs';
 
 // Suppress Node's experimental SQLite warning
 {
@@ -29,40 +30,27 @@ export const DEFAULT_TRACKS = [
   'eval',
   'perf'
 ];
-// Backwards compatibility alias + extensible set
 export const VALID_TRACKS = [...DEFAULT_TRACKS, 'pipeline', 'engine', 'harness', 'sweeper', 'runner'];
 
-export function generateDefaultTaskPlan(title = 'Task', track = 'core') {
-  const isBug = track === 'bug';
-  if (isBug) {
-    return [
-      `### Defect Summary`,
-      `<!-- Observed buggy behavior, reproduction steps, or error stack -->`,
-      ``,
-      `### Root Cause & Fix Plan`,
-      `- [ ] 1. Identify failure point and edge case`,
-      `- [ ] 2. Implement fix and guard checks`,
-      ``,
-      `### Verification`,
-      `- [ ] Run reproduction test: npm test`
-    ].join('\n');
-  }
-
+export function generateDefaultTaskPlan(title, track = 'core') {
   return [
-    `### Objective`,
-    `<!-- Clear summary of deliverables for: ${title} -->`,
+    `## Objective`,
+    `${title}`,
     ``,
-    `### Implementation Checklist`,
-    `- [ ] 1. Design & scaffold implementation`,
-    `- [ ] 2. Implement core logic / component`,
-    `- [ ] 3. Wire UI and verify edge cases`,
+    `> **Pair-Programmer Mode**: All tasks are executed in pair-programmer mode.`,
+    `> - **Dev 1 (Implementer)**: Does the first 3 parts (design, implementation, verification). Leaves task in \`in-review\` for Dev 2.`,
+    `> - **Dev 2 (Pair / Reviewer)**: Reviews the work, adds review notes to the task, and moves to \`done\` upon passing.`,
+    `> - **Cycle**: This cycle repeats until the task is complete. Dev 1 implements and fixes, Dev 2 reviews and approves.`,
     ``,
-    `### Verification`,
-    `- [ ] Automated tests pass: npm test`
+    `## Plan & Subtasks`,
+    `- [ ] 1. Initial design and analysis for [${track}] ${title}. Investigate what parts of the codebase this change will touch and plan out your work. (Dev 1)`,
+    `- [ ] 2. Implementation: focus on the work. Don't invent useless tests to "verify". (Dev 1)`,
+    `- [ ] 3. Code verification: test that it works. Don't use useless unit tests here either. Verify it the way a real user would. After verification leave the task in in-review for the operator, don't move to done until after pair-review. (Dev 1)`,
+    `- [ ] 4. Pair review & approval: review the work according to the same rules (no useless tests, verify like a real user would). Add review notes to the task. If it passes, move to done. If there is a fault, note that in the review notes. (Dev 2)`
   ].join('\n');
 }
 
-export function openBoard(dbPath) {
+export function openBoard(dbPath, options = {}) {
   if (!dbPath) throw new Error('dbPath is required');
 
   const isMemory = dbPath === ':memory:';
@@ -94,6 +82,13 @@ export function openBoard(dbPath) {
   `);
 
   return {
+    docsDir: options.docsDir || null,
+    rootDir: options.rootDir || null,
+    resolvedDocsDir: options.resolvedDocsDir || null,
+    resolvedSyncDocsDir: options.resolvedSyncDocsDir || null,
+    targetAgent: options.targetAgent || null,
+    targetProject: options.targetProject || null,
+
     addItem({ design_slug = null, track = 'core', title, details = null, status = 'planned', mode = 'pair', gate = null }) {
       if (typeof title !== 'string' || !title.trim()) throw new Error('Task title is required');
       if (!VALID_STATUSES.includes(status)) throw new Error(`Invalid status: ${status}. Expected: ${VALID_STATUSES.join(', ')}`);
@@ -102,21 +97,38 @@ export function openBoard(dbPath) {
 
       const effectiveDetails = (details && details.trim()) ? details.trim() : generateDefaultTaskPlan(title.trim(), track);
       const now = new Date().toISOString();
+      let newId;
       if (gate !== null && gate !== undefined) {
         const stmt = db.prepare(`
           INSERT INTO items (design_slug, track, title, details, status, mode, gate, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const res = stmt.run(design_slug || null, track || 'core', title.trim(), effectiveDetails, status, mode, gate, now, now);
-        return Number(res.lastInsertRowid);
+        newId = Number(res.lastInsertRowid);
       } else {
         const stmt = db.prepare(`
           INSERT INTO items (design_slug, track, title, details, status, mode, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const res = stmt.run(design_slug || null, track || 'core', title.trim(), effectiveDetails, status, mode, now, now);
-        return Number(res.lastInsertRowid);
+        newId = Number(res.lastInsertRowid);
       }
+
+      if (design_slug) {
+        try {
+          reconcileDocStatusSync(design_slug, {
+            board: this,
+            docsDir: this.docsDir,
+            rootDir: this.rootDir,
+            resolvedDocsDir: this.resolvedDocsDir,
+            resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+            targetAgent: this.targetAgent,
+            targetProject: this.targetProject
+          });
+        } catch (_) {}
+      }
+
+      return newId;
     },
 
     toggleChecklistItem(id, itemIndex) {
@@ -201,7 +213,34 @@ export function openBoard(dbPath) {
       values.push(id);
 
       db.prepare(`UPDATE items SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-      return this.getItem(id);
+      const updatedItem = this.getItem(id);
+
+      try {
+        if (item.design_slug) {
+          reconcileDocStatusSync(item.design_slug, {
+            board: this,
+            docsDir: this.docsDir,
+            rootDir: this.rootDir,
+            resolvedDocsDir: this.resolvedDocsDir,
+            resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+            targetAgent: this.targetAgent,
+            targetProject: this.targetProject
+          });
+        }
+        if (updatedItem.design_slug && updatedItem.design_slug !== item.design_slug) {
+          reconcileDocStatusSync(updatedItem.design_slug, {
+            board: this,
+            docsDir: this.docsDir,
+            rootDir: this.rootDir,
+            resolvedDocsDir: this.resolvedDocsDir,
+            resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+            targetAgent: this.targetAgent,
+            targetProject: this.targetProject
+          });
+        }
+      } catch (_) {}
+
+      return updatedItem;
     },
 
     getItem(id) {
@@ -210,8 +249,24 @@ export function openBoard(dbPath) {
     },
 
     deleteItem(id) {
+      const oldItem = this.getItem(id);
       const stmt = db.prepare('DELETE FROM items WHERE id = ?');
       const res = stmt.run(id);
+
+      if (oldItem && oldItem.design_slug) {
+        try {
+          reconcileDocStatusSync(oldItem.design_slug, {
+            board: this,
+            docsDir: this.docsDir,
+            rootDir: this.rootDir,
+            resolvedDocsDir: this.resolvedDocsDir,
+            resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+            targetAgent: this.targetAgent,
+            targetProject: this.targetProject
+          });
+        } catch (_) {}
+      }
+
       return res.changes > 0;
     },
 
@@ -367,6 +422,19 @@ export function openBoard(dbPath) {
         };
       }
 
+      try {
+        reconcileDocStatusSync(designSlug, {
+          board: this,
+          docsDir: this.docsDir,
+          rootDir: this.rootDir,
+          resolvedDocsDir: this.resolvedDocsDir,
+          resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+          targetAgent: this.targetAgent,
+          targetProject: this.targetProject,
+          forceClose: true
+        });
+      } catch (_) {}
+
       return {
         closed: true,
         designSlug,
@@ -380,6 +448,18 @@ export function openBoard(dbPath) {
     reopenDesignDoc(designSlug) {
       if (!designSlug) throw new Error('designSlug is required');
       const items = this.listItems({ design_slug: designSlug });
+      try {
+        reconcileDocStatusSync(designSlug, {
+          board: this,
+          docsDir: this.docsDir,
+          rootDir: this.rootDir,
+          resolvedDocsDir: this.resolvedDocsDir,
+          resolvedSyncDocsDir: this.resolvedSyncDocsDir,
+          targetAgent: this.targetAgent,
+          targetProject: this.targetProject,
+          forceReopen: true
+        });
+      } catch (_) {}
       return {
         reopened: true,
         designSlug,

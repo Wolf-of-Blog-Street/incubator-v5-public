@@ -182,8 +182,10 @@ export async function runDeepSweep({
   baseDir = process.cwd(),
   runDir = null,
   security = true,
-  astraEffort = 'high',
+  effort = null,
+  astraEffort = effort || 'high',
   fableEffort = 'medium',
+  skipClaude = false,
   story = null,
   spec = null,
   existingFindings = []
@@ -212,18 +214,28 @@ ${existingFindings.map((b, i) => `${i + 1}. **${b.id || `EXISTING-${i + 1}`}**: 
     existingFindingsContext
   });
 
-  console.log(`  2. Fable 5.1 Wave (claude-fable-5-1 @ ${fableEffort} - Workflow & Edge Mixture)...`);
-  const fableResult = await invokeFableFriend({
-    scopeFiles: baseline.scopeFiles,
-    storiesContext: baseline.storiesContext,
-    existingFindingsContext,
-    outputDir,
-    effort: fableEffort
-  });
-  const fableFindings = fableResult.parsed.findings || [];
-  console.log(`     → Fable 5.1 finished in ${(fableResult.duration_ms / 1000).toFixed(1)}s. Surfaced ${fableFindings.length} finding(s).`);
+  let fableFindings = [];
+  let fableResult = { parsed: { findings: [] }, duration_ms: 0 };
+  if (!skipClaude) {
+    try {
+      console.log(`  2. Fable 5.1 Wave (claude-fable-5-1 @ ${fableEffort} - Workflow & Edge Mixture)...`);
+      fableResult = await invokeFableFriend({
+        scopeFiles: baseline.scopeFiles,
+        storiesContext: baseline.storiesContext,
+        existingFindingsContext,
+        outputDir,
+        effort: fableEffort
+      });
+      fableFindings = fableResult.parsed?.findings || [];
+      console.log(`     → Fable 5.1 finished in ${(fableResult.duration_ms / 1000).toFixed(1)}s. Surfaced ${fableFindings.length} finding(s).`);
+    } catch (err) {
+      console.log(`     ⚠️ Fable 5.1 skipped (${err.message}). Continuing with Astra and Gemini.`);
+    }
+  } else {
+    console.log(`  2. Fable 5.1 Wave: Skipped (operator instruction).`);
+  }
 
-  console.log(`  3. Astra Wave (gpt-6-astra @ ${astraEffort} - Deep Security, Data Loss & Dangerous Bugs)...`);
+  console.log(`  3. Astra Wave (gpt-6-astra @ ${astraEffort} - Deep Reliability, Data Loss & System Invariants)...`);
   const astraResult = await invokeAstraFriend({
     scopeFiles: baseline.scopeFiles,
     existingFindingsContext,

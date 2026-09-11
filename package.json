@@ -1,7 +1,7 @@
 {
   "name": "incubator-v5",
-  "version": "5.2.0",
-  "license": "MIT",
+  "version": "5.3.1",
+  "license": "UNLICENSED",
   "description": "Modular agent engineering platform and component suite",
   "type": "module",
   "scripts": {
@@ -11,8 +11,12 @@
     "test:tier3": "node tools/test.mjs --tier3",
     "scaffold:docs": "node components/docs/tools/scaffold.mjs"
   },
-  "keywords": ["agents", "orchestration", "incubator", "developer-tools"],
+  "keywords": [
+    "agents",
+    "orchestration",
+    "incubator",
+    "developer-tools"
+  ],
   "author": "Wolf of Blog Street",
-  "license": "UNLICENSED",
   "private": true
 }

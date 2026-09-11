@@ -39,11 +39,23 @@ export function createBoardServer({
   workspaceScanner = null,
   port = 0
 } = {}) {
+  const resolvedDocsDir = findDocsDir(docsDir);
+  const resolvedSyncDocsDir = path.resolve(syncDocsDir || 'docs/sync');
+  fs.mkdirSync(resolvedSyncDocsDir, { recursive: true });
+  const serverRootDir = process.cwd();
+
   // Initialize Roster
   let effectiveRoster = roster;
   if (!effectiveRoster) {
     if (rosterPath || boardsDir || !dbPath) {
-      effectiveRoster = openRoster({ rosterPath, boardsDir, operatorToken });
+      effectiveRoster = openRoster({
+        rosterPath,
+        boardsDir,
+        operatorToken,
+        docsDir: resolvedDocsDir,
+        syncDocsDir: resolvedSyncDocsDir,
+        rootDir: serverRootDir
+      });
     } else {
       // Wrap single-database path into a single-agent roster with project and derived rosterPath
       const defaultId = 'manager-pm';
@@ -76,14 +88,21 @@ export function createBoardServer({
         },
         rosterPath: resolvedRosterPath,
         boardsDir: derivedBoardsDir,
-        operatorToken
+        operatorToken,
+        docsDir: resolvedDocsDir,
+        syncDocsDir: resolvedSyncDocsDir,
+        rootDir: serverRootDir
+      });
+    }
+  } else {
+    if (typeof effectiveRoster.setDocDirectories === 'function') {
+      effectiveRoster.setDocDirectories({
+        docsDir: resolvedDocsDir,
+        syncDocsDir: resolvedSyncDocsDir,
+        rootDir: serverRootDir
       });
     }
   }
-
-  const resolvedDocsDir = findDocsDir(docsDir);
-  const resolvedSyncDocsDir = path.resolve(syncDocsDir || 'docs/sync');
-  fs.mkdirSync(resolvedSyncDocsDir, { recursive: true });
 
   const candidateProjectsFile = rosterPath ? path.resolve(path.dirname(rosterPath), 'projects.json') : null;
   const resolvedProjectsFile = projectsFilePath ||
@@ -102,7 +121,8 @@ export function createBoardServer({
       path.resolve('../..'),
       path.resolve('../../..'),
       boardsDir ? path.resolve(boardsDir, '..') : null,
-      process.env.INCUBATOR_AGENTS_ROOT || null
+      process.env.FALCON_AGENTS_ROOT,
+      process.env.AGENTS_ROOT
     ].filter(Boolean)
   });
 

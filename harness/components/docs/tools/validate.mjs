@@ -38,14 +38,26 @@ export function validateDocs(docsDir) {
 
   for (const tier of REQUIRED_TIERS) {
     const tierPath = path.join(root, tier);
-    if (!fs.existsSync(tierPath) || !fs.statSync(tierPath).isDirectory()) {
+    try {
+      const lstat = fs.lstatSync(tierPath);
+      if (lstat.isSymbolicLink() || !lstat.isDirectory()) {
+        errors.push(`Invalid tier directory (must be regular directory, not symlink): ${tier}/`);
+      }
+    } catch {
       errors.push(`Missing required tier directory: ${tier}/`);
     }
   }
 
   for (const relFile of REQUIRED_FILES) {
     const filePath = path.join(root, relFile);
-    if (!fs.existsSync(filePath)) {
+    try {
+      const lstat = fs.lstatSync(filePath);
+      if (lstat.isSymbolicLink()) {
+        errors.push(`Invalid documentation file (symlinks prohibited): ${relFile}`);
+      } else if (!lstat.isFile()) {
+        errors.push(`Invalid documentation file (not a regular file): ${relFile}`);
+      }
+    } catch {
       errors.push(`Missing required documentation file: ${relFile}`);
     }
   }

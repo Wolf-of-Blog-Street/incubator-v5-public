@@ -82,6 +82,39 @@ sudo systemctl status falcon-board
 sudo journalctl -u falcon-board -f
 ```
 
+### 3.3 Upgrading the running server and the fleet (as deployed on `falcon-manager`)
+
+The production board on `falcon-manager` runs as a **user** unit (`systemctl --user`, `Linger=yes` for user `falcon`), not the system unit in 3.2. It executes `/home/falcon/incubator-v5/components/board/tools/serve.mjs` directly, so the remote `harness/` directory is unused. Its data is `config/roster.json` (the authoritative roster) and `boards/*.sqlite`. Both are outside every path below.
+
+Release first, then deploy:
+
+```bash
+# 1. Cut the release in the product repo
+#    bump package.json, npm test, jj bookmark set main -r @, git tag -a vX.Y.Z, jj git push --bookmark main, git push origin vX.Y.Z
+
+# 2. Snapshot the remote boards and roster
+ssh falcon-manager 'cd /home/falcon/incubator-v5 && node components/board/tools/backup.mjs --boards-dir boards --roster config/roster.json --out /home/falcon/backups/pre-vX.Y.Z'
+
+# 3. Sync code only (dry-run with -n first and read every "deleting" line)
+rsync -a --delete --exclude node_modules --exclude .runs --exclude '*.sqlite*' components/ falcon-manager:/home/falcon/incubator-v5/components/
+rsync -a --delete tools/        falcon-manager:/home/falcon/incubator-v5/tools/
+rsync -a package.json           falcon-manager:/home/falcon/incubator-v5/package.json
+rsync -a --delete docs/system/  falcon-manager:/home/falcon/incubator-v5/docs/system/
+rsync -a --delete docs/support/ falcon-manager:/home/falcon/incubator-v5/docs/support/
+
+# 4. Restart and check: health must report the new version
+ssh falcon-manager 'systemctl --user restart falcon-board && sleep 3 && curl -sf http://localhost:3333/api/v1/health'
+
+# 5. Upgrade seats, one at a time, from the product repo
+tar czf <backup-dir>/<seat>-harness.tgz -C <seat> harness
+node components/harness/tools/install.mjs <seat> [--upgrade-cards]
+node harness/components/board/tools/fleet.mjs list     # every seat shows [vX.Y.Z]
+```
+
+`--delete` is scoped to `components/` and `tools/`; `config/`, `boards/`, `backups/` and logs are never in scope. Pass `--upgrade-cards` only when the seat's three entry cards are the stock template and not operator edits. Do not use `fleet provision --force` to upgrade: it rotates the token and rewrites `falcon.env`.
+
+Rollback: for a seat, `rm -rf harness && tar xzf <backup>`; for the server, rsync the previous tag's checkout the same way and restart. Boards are untouched either way.
+
 ---
 
 ## 4. Live Backups & Disaster Recovery

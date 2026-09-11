@@ -2,10 +2,40 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openBoard } from '../engine/board.mjs';
+import {
+  findDocsDir,
+  collectDocsFromDir,
+  attachDocTaskStats,
+  ensureDocCodenames
+} from '../api/services/docService.mjs';
+
+function findBoardsDir(startDir = process.cwd()) {
+  let curr = path.resolve(startDir);
+  while (true) {
+    const candidate = path.join(curr, 'boards');
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {}
+
+    const isGit = fs.existsSync(path.join(curr, '.git'));
+    const isRoster = fs.existsSync(path.join(curr, 'config/roster.json'));
+    const isHarness = fs.existsSync(path.join(curr, 'harness/HARNESS.md'));
+    if (isGit || isRoster || isHarness) {
+      return path.join(curr, 'boards');
+    }
+
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
+  }
+  return path.resolve('boards');
+}
 
 function findDefaultDb() {
-  if (process.env.BOARD_DB) return process.env.BOARD_DB;
-  return path.resolve('boards/project.sqlite');
+  if (process.env.BOARD_DB) return path.resolve(process.env.BOARD_DB);
+  return path.join(findBoardsDir(), 'project.sqlite');
 }
 
 /**
@@ -110,7 +140,12 @@ export function createBoardClient(options = {}) {
 
   if (!url) {
     // Local fallback direct SQLite
-    const board = openBoard(dbPath);
+    const board = openBoard(dbPath, {
+      docsDir: findDocsDir(null, project),
+      targetAgent: agentId,
+      targetProject: project,
+      rootDir: process.cwd()
+    });
     return {
       isRemote: false,
       addItem: (item) => board.addItem(item),
@@ -130,6 +165,13 @@ export function createBoardClient(options = {}) {
           throw new Error(`Design doc file not found for slug "${slug}"`);
         }
         return { success: true, local: true, slug, filePath: resolved };
+      },
+      async listDocs() {
+        const dir = findDocsDir(null, project);
+        if (!dir) return [];
+        const docs = await collectDocsFromDir(dir);
+        attachDocTaskStats(docs, board);
+        return ensureDocCodenames(docs);
       },
       close: () => board.close()
     };
@@ -194,6 +236,14 @@ export function createBoardClient(options = {}) {
       const q = params.toString() ? `?${params.toString()}` : '';
       const data = await request(`/api/v1/tasks${q}`, 'GET');
       return data.tasks || [];
+    },
+    async listDocs() {
+      const params = new URLSearchParams();
+      if (project) params.set('project', project);
+      const q = params.toString() ? `?${params.toString()}` : '';
+      const endpoint = agentId ? `/api/v1/agents/${agentId}/docs${q}` : `/api/v1/docs${q}`;
+      const data = await request(endpoint, 'GET');
+      return data.docs || [];
     },
     async getItem(id) {
       const params = new URLSearchParams();

@@ -8,7 +8,8 @@ function parseArgs(args) {
     port: 3333,
     dbPath: process.env.BOARD_DB || path.resolve('boards/project.sqlite'),
     rosterPath: process.env.FALCON_ROSTER_PATH || null,
-    boardsDir: process.env.BOARDS_DIR || null
+    boardsDir: process.env.BOARDS_DIR || null,
+    projectsFilePath: process.env.PROJECTS_FILE || null
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -20,6 +21,8 @@ function parseArgs(args) {
       parsed.rosterPath = path.resolve(args[++i]);
     } else if (args[i] === '--boards-dir' && args[i + 1]) {
       parsed.boardsDir = path.resolve(args[++i]);
+    } else if (args[i] === '--projects-file' && args[i + 1]) {
+      parsed.projectsFilePath = path.resolve(args[++i]);
     }
   }
 
@@ -37,6 +40,7 @@ async function main() {
       dbPath: args.dbPath,
       rosterPath: args.rosterPath,
       boardsDir: args.boardsDir,
+      projectsFilePath: args.projectsFilePath,
       port: args.port
     });
 

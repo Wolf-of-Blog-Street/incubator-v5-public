@@ -56,7 +56,7 @@ test('fleet engine: manager schema, registration, token generation, and persiste
 
     assert.strictEqual(regResult.agent.id, 'example-pa');
     assert.ok(regResult.token, 'Must return plain token on auto-generation');
-    assert.ok(regResult.token.startsWith('agt_live_example-pa_'));
+    assert.ok(regResult.token.startsWith('agt_live_falcon-pa_'));
     assert.strictEqual(roster.hasAgent('example-pa'), true);
 
     // Verify token can authenticate
@@ -78,7 +78,7 @@ test('fleet engine: manager schema, registration, token generation, and persiste
 
     // 4. Token Rotation
     const rotated = roster.rotateAgentToken('example-pa');
-    assert.ok(rotated.token.startsWith('agt_live_example-pa_'));
+    assert.ok(rotated.token.startsWith('agt_live_falcon-pa_'));
     assert.notStrictEqual(rotated.token, regResult.token);
 
     // Old token should now fail
@@ -187,6 +187,60 @@ test('fleet engine: REST admin API routes enforce security and perform fleet ops
     const statusData = await statusRes.json();
     assert.strictEqual(statusData.status, 'healthy');
     assert.strictEqual(statusData.totalAgents, 3); // manager-pm, worker-bob, sweeper-bot
+
+    // 5b. Health endpoint reports version from package.json
+    const PKG_VERSION = JSON.parse(fs.readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
+    const healthRes = await fetch(`${baseUrl}/api/v1/health`);
+    assert.strictEqual(healthRes.status, 200);
+    const healthData = await healthRes.json();
+    assert.strictEqual(healthData.version, PKG_VERSION);
+
+    // 5c. Update agent harness_version via PATCH /api/v1/admin/agents/:agentId
+    // Worker Bob cannot update sweeper-bot
+    const bobPatchRes = await fetch(`${baseUrl}/api/v1/admin/agents/sweeper-bot`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer agt_live_bob_token'
+      },
+      body: JSON.stringify({ harness_version: PKG_VERSION })
+    });
+    assert.strictEqual(bobPatchRes.status, 403);
+
+    // Operator can update sweeper-bot
+    const patchRes = await fetch(`${baseUrl}/api/v1/admin/agents/sweeper-bot`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${opToken}`
+      },
+      body: JSON.stringify({ harness_version: PKG_VERSION })
+    });
+    assert.strictEqual(patchRes.status, 200);
+    const patchedAgent = await patchRes.json();
+    assert.strictEqual(patchedAgent.id, 'sweeper-bot');
+    assert.strictEqual(patchedAgent.harness_version, PKG_VERSION);
+
+    // Sweeper can update itself
+    const selfPatchRes = await fetch(`${baseUrl}/api/v1/admin/agents/sweeper-bot`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${regData.token}`
+      },
+      body: JSON.stringify({ harness_version: '5.2.1' })
+    });
+    assert.strictEqual(selfPatchRes.status, 200);
+    const selfPatchedAgent = await selfPatchRes.json();
+    assert.strictEqual(selfPatchedAgent.harness_version, '5.2.1');
+
+    // Verify GET /api/v1/roster reflects harness_version
+    const rosterRes = await fetch(`${baseUrl}/api/v1/roster`);
+    assert.strictEqual(rosterRes.status, 200);
+    const rosterData = await rosterRes.json();
+    const sweeperInRoster = rosterData.agents.find(a => a.id === 'sweeper-bot');
+    assert.ok(sweeperInRoster);
+    assert.strictEqual(sweeperInRoster.harness_version, '5.2.1');
 
     // 6. Rotate token via admin route
     const rotateRes = await fetch(`${baseUrl}/api/v1/admin/agents/sweeper-bot/token/rotate`, {

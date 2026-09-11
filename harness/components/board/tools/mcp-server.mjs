@@ -1,7 +1,8 @@
-#!/usr/bin/env node
 import readline from 'node:readline';
 import { createBoardClient } from './client.mjs';
 import { getFriendsCatalog, isBinaryAvailable, dispatchFriend } from '../../friends/engine/friends.mjs';
+import { openAccountStore } from '../../friends/engine/accounts.mjs';
+import { auditAuthHealth, autoRenewExpiringAccounts } from '../../friends/engine/refresh.mjs';
 
 const TOOLS = [
   {
@@ -93,6 +94,26 @@ const TOOLS = [
         timeout_ms: { type: 'number', description: 'Execution timeout in ms' }
       }
     }
+  },
+  {
+    name: 'friend_accounts_list',
+    description: 'Lists all configured AI accounts in the pool and their health/cooling status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: { type: 'string', description: 'Optional provider filter (claude, codex, kimi, opencode)' }
+      }
+    }
+  },
+  {
+    name: 'friend_accounts_refresh',
+    description: 'Performs token renewal sweep on expiring accounts in the safe pool.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        threshold_minutes: { type: 'number', default: 30, description: 'Expiry threshold in minutes' }
+      }
+    }
   }
 ];
 
@@ -154,6 +175,18 @@ export function createMcpServer(options = {}) {
         });
         return { content: [{ type: 'text', text: JSON.stringify(report, null, 2) }] };
       }
+      case 'friend_accounts_list': {
+        const store = openAccountStore();
+        const audit = auditAuthHealth(store);
+        return { content: [{ type: 'text', text: JSON.stringify(audit, null, 2) }] };
+      }
+      case 'friend_accounts_refresh': {
+        const store = openAccountStore();
+        const results = await autoRenewExpiringAccounts(store, {
+          thresholdMinutes: args.threshold_minutes || 30
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
+      }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -167,13 +200,21 @@ export function createMcpServer(options = {}) {
         serverInfo: { name: 'incubator-board', version: '5.0.0' }
       };
     }
+    if (msg.method === 'notifications/initialized') {
+      return null;
+    }
+    if (msg.method === 'ping') {
+      return {};
+    }
     if (msg.method === 'tools/list') {
       return { tools: TOOLS };
     }
     if (msg.method === 'tools/call') {
-      return handleToolCall(msg.params.name, msg.params.arguments);
+      return handleToolCall(msg.params?.name, msg.params?.arguments);
     }
-    return null;
+    const err = new Error(`Method not found: ${msg.method}`);
+    err.code = -32601;
+    throw err;
   }
 
   return {
@@ -190,17 +231,20 @@ if (process.argv[1] && process.argv[1].endsWith('mcp-server.mjs')) {
 
   rl.on('line', async (line) => {
     if (!line.trim()) return;
+    let msg = null;
     try {
-      const msg = JSON.parse(line);
+      msg = JSON.parse(line);
       const res = await server.handleMessage(msg);
       if (res !== null && msg.id !== undefined) {
         process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: res }) + '\n');
       }
     } catch (err) {
+      const id = (msg && msg.id !== undefined) ? msg.id : null;
+      const code = typeof err.code === 'number' ? err.code : -32603;
       process.stdout.write(JSON.stringify({
         jsonrpc: '2.0',
-        id: null,
-        error: { code: -32603, message: err.message }
+        id,
+        error: { code, message: err.message }
       }) + '\n');
     }
   });

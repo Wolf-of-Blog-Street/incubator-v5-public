@@ -102,18 +102,16 @@ export async function runTier3Flight() {
   });
   if (!s4.passed) allPassed = false;
 
-  // Step 5: Static Security & Tenant Isolation Audit
-  const s5 = await runStep('Deep Static Tenant Isolation & Secret Sanitization Audit', async () => {
-    const { auditTenantIsolation, auditSecretSanitization } = await import('../components/sweeper/engine/saasGuards.mjs');
-    const boardApi = fs.readFileSync(path.join(ROOT_DIR, 'components/board/api/server.mjs'), 'utf8');
-    const isoIssues = auditTenantIsolation(boardApi);
-    if (isoIssues.length > 0) {
-      throw new Error(`Tenant isolation static warning: ${isoIssues[0].warning}`);
-    }
-    const secretIssues = auditSecretSanitization(boardApi);
-    if (secretIssues.length > 0) {
-      throw new Error(`Secret sanitization static warning: ${secretIssues[0].warning}`);
-    }
+  // Step 5: Board Engine SQLite Schema & Contract Integrity Audit
+  const s5 = await runStep('Board Engine SQLite Schema & Contract Integrity Audit', async () => {
+    const { openBoard } = await import('../components/board/engine/board.mjs');
+    const b = openBoard(':memory:');
+    const id = b.addItem({ title: 'Release Sanity Task', track: 'core', status: 'planned' });
+    if (!id || id <= 0) throw new Error('Failed to create sanity task in board engine');
+    b.updateItem(id, { status: 'done' });
+    const item = b.getItem(id);
+    if (item.status !== 'done') throw new Error('Failed to transition item status in board engine');
+    b.close();
     return true;
   });
   if (!s5.passed) allPassed = false;

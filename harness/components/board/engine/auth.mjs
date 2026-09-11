@@ -52,14 +52,10 @@ export function hashToken(token) {
  */
 export function timingSafeCompare(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) {
-    // Constant time dummy comparison to avoid early length leak
-    crypto.timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
+  const hashA = crypto.createHash('sha256').update(a).digest();
+  const hashB = crypto.createHash('sha256').update(b).digest();
+  const equal = crypto.timingSafeEqual(hashA, hashB);
+  return equal && a.length === b.length;
 }
 
 /**
@@ -87,8 +83,8 @@ export function verifyToken(providedToken, storedTokenOrHash) {
  */
 export function extractBearerToken(authHeader) {
   if (!authHeader || typeof authHeader !== 'string') return null;
-  const match = authHeader.match(/^Bearer\s+([a-zA-Z0-9_\-]+)$/i);
-  return match ? match[1] : null;
+  const match = authHeader.match(/^Bearer\s+([a-zA-Z0-9_\-.+=/]+)$/i);
+  return match?.[1] ?? null;
 }
 
 /**
@@ -98,7 +94,7 @@ export function extractBearerToken(authHeader) {
  * @param {string|undefined} options.authHeader The `Authorization` header value
  * @param {Array<Object>} options.agents Array of agent definitions from roster
  * @param {string|null} [options.operatorToken] Optional master operator token
- * @returns {{ authenticated: boolean, isOperator: boolean, agentId: string|null, agent: Object|null, error?: string }}
+ * @returns {{ authenticated: boolean, isOperator: boolean, agentId: string|null, agent: Object|null, error: string|null }}
  */
 export function authenticateRequest({ authHeader, agents = [], operatorToken = null }) {
   const token = extractBearerToken(authHeader);
@@ -118,7 +114,8 @@ export function authenticateRequest({ authHeader, agents = [], operatorToken = n
       authenticated: true,
       isOperator: true,
       agentId: null,
-      agent: null
+      agent: null,
+      error: null
     };
   }
 
@@ -130,7 +127,8 @@ export function authenticateRequest({ authHeader, agents = [], operatorToken = n
         authenticated: true,
         isOperator: false,
         agentId: agent.id,
-        agent
+        agent,
+        error: null
       };
     }
   }
@@ -145,6 +143,21 @@ export function authenticateRequest({ authHeader, agents = [], operatorToken = n
 }
 
 /**
+ * Pure predicate checking whether a principal has permission to access a target tenant.
+ * 
+ * @param {Object} options
+ * @param {string|null} options.authenticatedAgentId 
+ * @param {string} options.targetAgentId 
+ * @param {boolean} [options.isOperator=false]
+ * @returns {boolean}
+ */
+export function canAccessTenant({ authenticatedAgentId, targetAgentId, isOperator = false }) {
+  if (isOperator) return true;
+  if (!authenticatedAgentId) return false;
+  return authenticatedAgentId === targetAgentId;
+}
+
+/**
  * Asserts that the authenticated principal is allowed to access the target agent's board.
  * Throws ForbiddenError if an agent tries to access another agent's tenant.
  * 
@@ -152,6 +165,9 @@ export function authenticateRequest({ authHeader, agents = [], operatorToken = n
  * @param {string|null} options.authenticatedAgentId 
  * @param {string} options.targetAgentId 
  * @param {boolean} [options.isOperator=false]
+ * @returns {boolean}
+ * @throws {UnauthorizedError} If principal is unauthenticated
+ * @throws {ForbiddenError} If cross-tenant access is attempted
  */
 export function assertTenantAccess({ authenticatedAgentId, targetAgentId, isOperator = false }) {
   if (isOperator) return true;

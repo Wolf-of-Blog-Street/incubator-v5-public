@@ -324,6 +324,23 @@ test('Board API server supports multi-agent /api/v1 routes, Bearer auth, and doc
     assert.ok(alphaDocDetail.doc.content.includes('Synced blueprint content'));
     assert.equal(alphaDocDetail.doc.tasks.length, 1);
 
+    // 8b. Project-scoped sync: a doc synced under project "proj-a" is invisible under "proj-b",
+    //     and an unauthenticated read for another agent must not 401 (the UI viewer has no token).
+    const resDocSyncProj = await fetch(`${instance.url}/api/v1/docs/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenBeta}` },
+      body: JSON.stringify({ slug: 'beta-spec', project: 'proj-a', content: '# Beta Spec\n\n- **Status**: draft\n' })
+    });
+    assert.equal(resDocSyncProj.status, 200);
+    assert.ok((await resDocSyncProj.json()).filePath.includes(path.join('agent-beta', 'proj-a')));
+    const betaDocsA = await (await fetch(`${instance.url}/api/v1/agents/agent-beta/docs?project=proj-a`)).json();
+    assert.deepEqual(betaDocsA.docs.map(d => d.slug), ['beta-spec']);
+    const resBetaDocsB = await fetch(`${instance.url}/api/v1/agents/agent-beta/docs?project=proj-b`);
+    assert.equal(resBetaDocsB.status, 200);
+    assert.deepEqual((await resBetaDocsB.json()).docs, []);
+    assert.equal((await fetch(`${instance.url}/api/v1/agents/agent-beta/docs/beta-spec?project=proj-b`)).status, 404);
+    assert.equal((await fetch(`${instance.url}/api/v1/agents/agent-beta/docs/beta-spec?project=proj-a`)).status, 200);
+
     // 9. Checklist toggle: POST /api/v1/tasks/1/toggle-checklist
     const resToggle = await fetch(`${instance.url}/api/v1/tasks/1/toggle-checklist`, {
       method: 'POST',
@@ -337,7 +354,16 @@ test('Board API server supports multi-agent /api/v1 routes, Bearer auth, and doc
     const toggleData = await resToggle.json();
     assert.ok(toggleData.task.details.includes('- [x]'));
 
-    // 10. Doc Status Transition: POST /api/v1/docs/:slug/status
+    // 10. Mark task done and test Doc Status Transition: POST /api/v1/docs/:slug/status
+    await fetch(`${instance.url}/api/v1/tasks/1`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenAlpha}`
+      },
+      body: JSON.stringify({ status: 'done', agent: 'agent-alpha' })
+    });
+
     const resDocFinishV1 = await fetch(`${instance.url}/api/v1/docs/feature-alpha/status`, {
       method: 'POST',
       headers: {

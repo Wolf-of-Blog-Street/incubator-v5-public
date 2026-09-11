@@ -14,42 +14,46 @@ Incubator v5 tools live inside your agent's `harness/components/`.
 
 ## 2. Project Board CLI (`components/board/tools/board.mjs`)
 
-The project board tracks individual executable tasks grouped by architectural design doc / stage.
+The project board tracks individual executable jobs grouped by architectural design proposal.
+
+A card on the board is a **job** (or task). A card without a governing design doc (`--doc`) is a **standalone job**.
 
 ### Common Invocations
 
 ```bash
-# Add a task linked to a design doc in a specific project
+# Add a job linked to a design doc in a specific project
 node harness/components/board/tools/board.mjs add "Visual section inspector viewer" \
   --doc page-structure --track ux --mode runner --project incubator-v5
 
-# Add a quick task (unassigned to a design doc)
+# Add a standalone job (unassigned to a design doc)
 node harness/components/board/tools/board.mjs add "Fix authentication timeout in dev server" --project incubator-v5
 
-# List all tasks for a project
+# List all jobs for a project
 node harness/components/board/tools/board.mjs list --project incubator-v5
 
-# Filter tasks by status, execution mode, or track
+# Filter jobs by status, execution mode, or track
 node harness/components/board/tools/board.mjs list --mode runner
 node harness/components/board/tools/board.mjs list --status in-progress
 
-# Update task status or mode
+# Update job status or mode
 node harness/components/board/tools/board.mjs set 3 --status in-progress
 node harness/components/board/tools/board.mjs set 3 --status done
 node harness/components/board/tools/board.mjs set 3 --mode runner
 
-# Mark a design document as Finished or Reopen it
+# Manual Overrides: Mark a design doc Closed or Reopen it
+# (Note: Design docs automatically close when all jobs are Done, and reopen if a job reopens.
+# These commands serve as manual overrides; subsequent job writes will recompute status.)
 node harness/components/board/tools/board.mjs finish-doc falcon-manager-board-roster --project incubator-v5
 node harness/components/board/tools/board.mjs reopen-doc falcon-manager-board-roster --project incubator-v5
 
-# Delete a task
+# Delete a job
 node harness/components/board/tools/board.mjs rm 3
 ```
 
 ### Options Reference
 - `--project <name>`: Target project name (resolves to `boards/<name>.sqlite` and `workspaces/<name>/docs/design/`).
 - `--db <path>`: Path to project SQLite board (defaults to `boards/project.sqlite` or derived from `--project`).
-- `--doc <slug>`: Links task to `workspaces/<project>/docs/design/<slug>.md`.
+- `--doc <slug>`: Links job to `workspaces/<project>/docs/design/<slug>.md` (omit for standalone job).
 - `--track <name>`: Layer track (`core`, `engine`, `harness`, `sweeper`, `feature`, `bug`, `frontend`, `backend`, `api`, `ux`, `db`, `infra`, `docs`, `test`, `perf`).
 - `--mode <mode>`: `pair` (local interactive) or `runner` (autonomous background execution).
 - `--status <status>`: `planned`, `in-progress`, `review`, `done`, `blocked`.
@@ -134,8 +138,26 @@ node harness/components/docs/tools/validate.mjs workspaces/<project>-docs
 Install or upgrade the Incubator v5 harness in any agent home:
 
 ```bash
-node components/harness/tools/install.mjs <target-agent-home> [--init-cards]
+node components/harness/tools/install.mjs <target-agent-home> [--init-cards | --upgrade-cards]
 ```
+
+Run it from the product repo so it copies from `components/`. Run from an installed seat it copies that seat's `harness/` instead.
+
+What it writes and what it leaves alone:
+
+| Path in seat | Behaviour |
+| :--- | :--- |
+| `harness/HARNESS.md`, `harness/engine/brain.mjs` | Always overwritten. |
+| `harness/components/{docs,brain,board,sweeper,friends,harness}` | Recursive copy. Same-named files overwritten. Extra files in the seat stay. |
+| `harness/manifest.json` | Always rewritten: `harness_version` (source `package.json`), `source_revision` (jj working-copy commit, or its parent when the working copy is empty), `installed_at`, `seat` (from `falcon.env`). |
+| `harness/HARNESS-custom.md` | Written only if missing. Never overwritten. |
+| `harness/falcon.env` | Written only by `fleet provision`. The installer CLI never touches it. |
+| `brain/`, `boards/`, `projects/`, `workspaces/` | Directories created if missing. Contents never read or written. |
+| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | Untouched unless `--init-cards` (write missing) or `--upgrade-cards` (overwrite all three). |
+
+After writing the manifest the installer sends `PATCH /api/v1/admin/agents/<seat>` with the seat's own token from `falcon.env` to set `harness_version` on the roster. A failed stamp is silent; check with `fleet list`, which prints `[vX.Y.Z]` after each seat name.
+
+Nothing is deleted. There is no dry run. To upgrade a whole fleet without clobbering seat state, follow `docs/support/RUNBOOK.md` §3.3.
 
 ---
 

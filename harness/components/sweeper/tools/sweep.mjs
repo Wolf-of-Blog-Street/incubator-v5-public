@@ -13,7 +13,8 @@ function parseArgs(args) {
     deep: false,
     effort: 'high',
     story: null,
-    spec: null
+    spec: null,
+    skipClaude: false
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -29,6 +30,7 @@ Options:
   --spec <file>      Design doc spec containing intended behavior & user stories
   --story <text>     Explicit user story describing how the component should work
   --deep             Run deep sweep with Astra / Codex advisory
+  --skip-claude      Skip Claude Fable wave (Gemini + Codex Astra only)
   --waves <1,2,3>    Wave selection (default: 1,2,3)
   --security         Focus on security and auth vulnerabilities
   --effort <level>   Effort level for deep sweeper (low, medium, high)
@@ -45,6 +47,8 @@ Options:
       parsed.security = true;
     } else if (args[i] === '--deep') {
       parsed.deep = true;
+    } else if (args[i] === '--skip-claude') {
+      parsed.skipClaude = true;
     } else if (args[i] === '--effort' && args[i + 1]) {
       parsed.effort = args[++i];
     } else if (args[i] === '--story' && args[i + 1]) {
@@ -69,6 +73,7 @@ async function main() {
         runDir: args.runDir,
         security: args.security,
         effort: args.effort,
+        skipClaude: args.skipClaude,
         story: args.story,
         spec: args.spec
       });
