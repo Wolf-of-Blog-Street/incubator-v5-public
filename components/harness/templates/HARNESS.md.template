@@ -95,6 +95,15 @@ node harness/components/board/tools/board.mjs set <id> --status in-progress
 node harness/components/board/tools/board.mjs set <id> --status done
 ```
 
+### Every Job Carries the Pair-Programmer Checklist
+Every card on the board has a `## Plan & Subtasks` section with four parts. This is how a job is run, whoever created it and however it was created (`board add`, `sync-doc`, the web UI, MCP):
+1. **Design and analysis** (Dev 1): find what the change touches, plan the work.
+2. **Implementation** (Dev 1): do the work. No useless tests to "verify".
+3. **Code verification** (Dev 1): verify it the way a real user would (Chrome for UI). Tick 1–3, write verification notes on the card, set the job to `review`. Never move it to `done` yourself.
+4. **Pair review and approval** (Dev 2): review like a real user, add review notes, move to `done` or write the fault and leave it in `review`.
+
+Anything you pass as `--details` becomes the job's **Objective** above the checklist. The board adds the checklist on create and restores it if a rewrite drops it, so never delete the `## Plan & Subtasks` section: append your notes below it.
+
 ### Planning Mode & The Atomic Design-to-Board Invariant
 When designing new features, architectures, or non-trivial tasks:
 1. **Atomic Design & Board Sync Standard**: Creating or modifying a design doc and scaffolding its task cards onto the Falcon Board is a **SINGLE ATOMIC TRANSACTION**. An agent must **NEVER** write a design doc on disk without immediately running `node harness/components/board/tools/board.mjs sync-doc <slug> --project <project>` in the exact same turn. Authoring a `.md` doc without immediately populating its task cards on the board is a **HARNESS PROTOCOL FAILURE**.

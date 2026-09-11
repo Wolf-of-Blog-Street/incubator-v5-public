@@ -188,3 +188,18 @@ test('ProjectsStore Safety Guard: Corrupted catalog creates backup before overwr
   }
 });
 
+
+test('every job carries the pair-programmer checklist, on create and after a rewrite of details', () => {
+  const board = openBoard(':memory:');
+  const id = board.addItem({ title: 'Ship it', track: 'core', details: '- brief line' });
+  const created = board.getItem(id).details;
+  assert.ok(created.startsWith('## Objective\n- brief line\n'));
+  assert.match(created, /## Plan & Subtasks/);
+  board.updateItem(id, { details: 'rewritten, no plan' });
+  const rewritten = board.getItem(id).details;
+  assert.ok(rewritten.startsWith('## Objective\nrewritten, no plan\n'));
+  assert.match(rewritten, /4\. Pair review & approval/);
+  board.updateItem(id, { details: created + '\n## Review notes\nok' });
+  assert.equal((board.getItem(id).details.match(/## Plan & Subtasks/g) || []).length, 1);
+  board.close();
+});

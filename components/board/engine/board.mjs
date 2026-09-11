@@ -187,8 +187,14 @@ export function openBoard(dbPath, options = {}) {
         values.push(updates.track);
       }
       if (updates.details !== undefined) {
+        // The checklist is the contract for how a job is run. A rewrite that drops it gets it back.
+        let details = updates.details;
+        if (!/^##\s*Plan\s*&\s*Subtasks/im.test(details || '')) {
+          const row = db.prepare('SELECT title, track FROM items WHERE id = ?').get(id);
+          if (row) details = generateDefaultTaskPlan(row.title, row.track, details);
+        }
         fields.push('details = ?');
-        values.push(updates.details);
+        values.push(details);
       }
       if (updates.status !== undefined) {
         if (!VALID_STATUSES.includes(updates.status)) {
