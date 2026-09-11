@@ -32,10 +32,10 @@ export const DEFAULT_TRACKS = [
 ];
 export const VALID_TRACKS = [...DEFAULT_TRACKS, 'pipeline', 'engine', 'harness', 'sweeper', 'runner'];
 
-export function generateDefaultTaskPlan(title, track = 'core') {
+export function generateDefaultTaskPlan(title, track = 'core', brief = null) {
   return [
     `## Objective`,
-    `${title}`,
+    `${brief && brief.trim() ? brief.trim() : title}`,
     ``,
     `> **Pair-Programmer Mode**: All tasks are executed in pair-programmer mode.`,
     `> - **Dev 1 (Implementer)**: Does the first 3 parts (design, implementation, verification). Leaves task in \`in-review\` for Dev 2.`,
@@ -95,7 +95,10 @@ export function openBoard(dbPath, options = {}) {
       if (!VALID_MODES.includes(mode)) throw new Error(`Invalid mode: ${mode}. Expected: ${VALID_MODES.join(', ')}`);
       if (track && !VALID_TRACKS.includes(track)) throw new Error(`Invalid track: ${track}. Expected: ${VALID_TRACKS.join(', ')}`);
 
-      const effectiveDetails = (details && details.trim()) ? details.trim() : generateDefaultTaskPlan(title.trim(), track);
+      // Every job carries the pair-programmer checklist. Caller-supplied details become the objective
+      // unless they already contain a plan section (re-imports, explicit checklists).
+      const hasPlan = /^##\s*Plan\s*&\s*Subtasks/im.test(details || '');
+      const effectiveDetails = hasPlan ? details.trim() : generateDefaultTaskPlan(title.trim(), track, details);
       const now = new Date().toISOString();
       let newId;
       if (gate !== null && gate !== undefined) {

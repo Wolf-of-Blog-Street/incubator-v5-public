@@ -218,7 +218,7 @@ test('Graceful no-op when doc file is absent on disk', () => {
   board.close();
 });
 
-test('sync-doc copies milestone briefs directly into task details', async () => {
+test('sync-doc puts milestone briefs under Objective and attaches the pair-programmer checklist', async () => {
   const { tempDir, docsDir } = createTempProject();
   const board = openBoard(':memory:', { docsDir, rootDir: tempDir });
 
@@ -242,10 +242,9 @@ test('sync-doc copies milestone briefs directly into task details', async () => 
 
   const task1 = items.find(i => i.title.includes('Indexer Engine'));
   assert.strictEqual(Boolean(task1), true);
-  assert.strictEqual(
-    task1.details,
-    '- Parse tokens and build inverted index\n- Cache postings list in memory'
-  );
+  assert.ok(task1.details.startsWith('## Objective\n- Parse tokens and build inverted index\n- Cache postings list in memory\n'));
+  assert.match(task1.details, /## Plan & Subtasks/);
+  assert.match(task1.details, /4\. Pair review & approval/);
 
   board.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
