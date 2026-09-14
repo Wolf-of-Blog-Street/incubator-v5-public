@@ -161,6 +161,23 @@ When developing, fixing, or extending Incubator v5 itself:
 
 ---
 
+## 6a. Using Another Project's Code or Docs
+
+Every project in the fleet is a GitHub repository, and the operator owns all of them. Nothing stops one seat from building on another project's work:
+
+```bash
+# 1. Find it: the catalog lists every project, its GitHub URL, and which seat has it checked out
+node harness/components/board/tools/fleet.mjs project-catalog list
+
+# 2. Bring it in: clone it into your own workspaces/ (jj colocated with git)
+cd workspaces && jj git clone --colocate https://github.com/<org>/<repo>.git <repo>
+
+# 3. Read its design record: another seat's design docs are readable through the board
+curl -s -H "Authorization: Bearer $FALCON_BOARD_TOKEN" "$FALCON_BOARD_URL/api/v1/agents/<seat-id>/docs?project=<project-id>"
+```
+
+Work on the clone the way you work on any workspace project. Push to its GitHub repo when the owning seat should pick the change up. Only tasks are per-seat; roster, catalog, and docs are fleet-wide.
+
 ## 7. The 3-Tier Documentation System
 
 All major repositories in `workspaces/<project>/` maintain their documentation in **`<project>/docs/`**:
