@@ -297,6 +297,7 @@ export async function withJjIsolation(cwd, options, executeFn) {
  * @param {string} [options.cwd=process.cwd()]
  * @param {number} [options.timeoutMs=120000] - Default timeout: 2 minutes (0 disables timeout)
  * @param {Record<string, string>} [options.env={}]
+ * @param {boolean} [options.inheritLogin=false] - Keep the operator's CLI config dirs (no pool account)
  * @param {Function} [options.onStdout] - (chunk: string) => void
  * @param {Function} [options.onStderr] - (chunk: string) => void
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, durationMs: number }>}
@@ -312,10 +313,12 @@ export function spawnFriendProcess(binary, args, options = {}) {
     if (!options.env?.ANTHROPIC_API_KEY) delete baseEnv.ANTHROPIC_API_KEY;
     if (!options.env?.OPENAI_API_KEY) delete baseEnv.OPENAI_API_KEY;
     if (!options.env?.MOONSHOT_API_KEY) delete baseEnv.MOONSHOT_API_KEY;
-    if (!options.env?.CLAUDE_CONFIG_DIR) delete baseEnv.CLAUDE_CONFIG_DIR;
-    if (!options.env?.CODEX_HOME) delete baseEnv.CODEX_HOME;
-    if (!options.env?.KIMI_HOME) delete baseEnv.KIMI_HOME;
-    if (!options.env?.OPENCODE_HOME) delete baseEnv.OPENCODE_HOME;
+    if (!options.inheritLogin) {
+      if (!options.env?.CLAUDE_CONFIG_DIR) delete baseEnv.CLAUDE_CONFIG_DIR;
+      if (!options.env?.CODEX_HOME) delete baseEnv.CODEX_HOME;
+      if (!options.env?.KIMI_HOME) delete baseEnv.KIMI_HOME;
+      if (!options.env?.OPENCODE_HOME) delete baseEnv.OPENCODE_HOME;
+    }
 
     const env = { ...baseEnv, ...(options.env || {}) };
 
@@ -463,6 +466,20 @@ export async function dispatchFriend(friendId, options = {}) {
     }
   }
 
+  // 3. No pool account: use the operator's own CLI login instead of an empty sandbox profile.
+  //    The sandbox only protects the operator's config when a pool credential is in play.
+  const inheritLogin = !activeAccount && SUPPORTED_PROVIDERS.includes(friendId);
+  if (inheritLogin) {
+    delete friendEnv.CLAUDE_CONFIG_DIR;
+    delete friendEnv.CODEX_HOME;
+    delete friendEnv.KIMI_HOME;
+    delete friendEnv.OPENCODE_HOME;
+    configDir = null;
+    if (typeof options.onStderr === 'function') {
+      options.onStderr(`[friends] no ${friendId} account in the pool; using the operator's own ${friendId} login\n`);
+    }
+  }
+
   const report = await withJjIsolation(
     cwd,
     { description, noJj: options.noJj, autoAbandon: options.autoAbandon },
@@ -470,6 +487,7 @@ export async function dispatchFriend(friendId, options = {}) {
       const execResult = await spawnFriendProcess(binary, args, {
         cwd,
         env: friendEnv,
+        inheritLogin,
         timeoutMs: options.timeoutMs,
         onStdout: options.onStdout,
         onStderr: options.onStderr
@@ -500,6 +518,7 @@ export async function dispatchFriend(friendId, options = {}) {
     prompt: options.prompt,
     cwd,
     accountId: activeAccount?.id || null,
+    auth: activeAccount ? `pool:${activeAccount.id}` : 'operator-login',
     isIsolated: report.isIsolated,
     changeId: report.changeId,
     commitId: report.commitId,

@@ -116,3 +116,32 @@ exit 1
   assert.ok(updatedAcc.coolingUntil > Date.now());
   assert.equal(updatedAcc.rateLimitCount, 1);
 });
+
+test('Dispatch Friend — No pool account: inherits the operator login, no sandbox config dir', async (t) => {
+  const tmpAuthDir = fs.mkdtempSync(path.join(os.tmpdir(), 'incubator-dispatch-inherit-'));
+  const accountsPath = path.join(tmpAuthDir, 'accounts.json');
+  t.after(() => { fs.rmSync(tmpAuthDir, { recursive: true, force: true }); });
+  openAccountStore({ storagePath: accountsPath }); // empty pool
+
+  const scriptPath = path.join(tmpAuthDir, 'mock-claude.sh');
+  fs.writeFileSync(scriptPath, `#!/bin/sh
+echo "CONFIG=\${CLAUDE_CONFIG_DIR:-unset}"
+echo "KEY=\${ANTHROPIC_API_KEY:-unset}"
+exit 0
+`, { mode: 0o755 });
+  const customConfigPath = path.join(tmpAuthDir, 'friends.json');
+  fs.writeFileSync(customConfigPath, JSON.stringify({ claude: { binary: scriptPath, defaultFlags: [] } }));
+
+  const notes = [];
+  const report = await dispatchFriend('claude', {
+    prompt: 'hello', noJj: true, baseAuthDir: tmpAuthDir, accountsPath,
+    configPath: customConfigPath, agentId: 'manager-pm', onStderr: c => notes.push(c)
+  });
+
+  assert.equal(report.exitCode, 0);
+  assert.equal(report.accountId, null);
+  assert.equal(report.auth, 'operator-login');
+  assert.ok(report.stdout.includes('CONFIG=unset'), report.stdout);
+  assert.ok(report.stdout.includes('KEY=unset'), report.stdout);
+  assert.ok(notes.join('').includes("operator's own claude login"));
+});
