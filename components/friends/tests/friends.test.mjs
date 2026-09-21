@@ -21,6 +21,12 @@ describe('Friends Engine — Unit Tests', () => {
     assert.ok(catalog.codex, 'codex provider exists');
     assert.ok(catalog.kimi, 'kimi provider exists');
     assert.ok(catalog.opencode, 'opencode provider exists');
+    assert.ok(catalog.grok, 'grok provider exists');
+    assert.ok(catalog['lean-opus-4-5'], 'lean-opus-4-5 provider exists');
+    assert.equal(catalog.grok.binary, 'grok');
+    assert.equal(catalog['lean-opus-4-5'].binary, 'claude');
+    assert.equal(catalog['lean-opus-4-5'].defaultModel, 'claude-opus-4-5');
+    assert.ok(catalog['lean-opus-4-5'].defaultFlags.includes('--strict-mcp-config'), 'lean opus loads no MCP servers');
     assert.equal(catalog.claude.binary, 'claude');
     assert.equal(catalog.codex.binary, 'codex');
   });
@@ -111,6 +117,11 @@ describe('Friends Engine — Unit Tests', () => {
     );
   });
 
+  test('--timeout: 0, a negative value and junk all mean no timer; a positive value is kept', async () => {
+    const { parseTimeoutMs } = await import('../engine/friends.mjs');
+    assert.deepEqual(['0', '-1', 'abc', undefined, '60000'].map(parseTimeoutMs), [0, 0, 0, 0, 60000]);
+  });
+
   test('spawnFriendProcess allows timeoutMs = 0 to disable timeout', async () => {
     const res = await spawnFriendProcess('node', ['-e', 'console.log("zero-timeout works")'], {
       timeoutMs: 0
@@ -151,4 +162,27 @@ describe('Friends Engine — Unit Tests', () => {
     const inJj = isJjRepository(process.cwd());
     assert.equal(typeof inJj, 'boolean');
   });
+});
+
+test('voice pack: system prompt is opening line, standard preamble, then the pack verbatim', async () => {
+  const { buildVoiceSystemPrompt, loadVoicePack, resolveFriendCommand, VOICE_OPENING, VOICE_PREAMBLE } = await import('../engine/friends.mjs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'data/opus-writer/voice-pack'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'data/opus-writer/voice-pack/tom-sales.md'), 'Sample one.\nSample two.\n');
+    const pack = loadVoicePack('tom-sales', tmp);
+    assert.equal(pack.name, 'tom-sales');
+    const sys = buildVoiceSystemPrompt(pack.text);
+    assert.equal(sys, `${VOICE_OPENING}\n\n${VOICE_PREAMBLE}\n\nSample one.\nSample two.\n`);
+    assert.equal(VOICE_OPENING, 'Write in this voice.');
+    assert.match(VOICE_PREAMBLE, /^These voice styles are for you to understand the style/);
+    assert.match(VOICE_PREAMBLE, /adapt their style to the task you have\.$/);
+
+    const cmd = resolveFriendCommand('lean-opus-4-5', { prompt: 'job', systemPrompt: sys });
+    assert.deepEqual(cmd.args, ['--strict-mcp-config', '--dangerously-skip-permissions', '--tools', '', '--setting-sources', 'user', '--model', 'claude-opus-4-5', '--system-prompt', sys, '-p', 'job']);
+    assert.throws(() => resolveFriendCommand('grok', { prompt: 'job', systemPrompt: sys }), /does not support a system prompt/);
+    assert.throws(() => loadVoicePack('missing', tmp), /not found/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

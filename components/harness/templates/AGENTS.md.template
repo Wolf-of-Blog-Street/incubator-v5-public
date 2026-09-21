@@ -9,7 +9,7 @@ When starting a session or picking up work:
 1. **Check Context & The Board**:
    - Inspect the board (`node harness/components/board/tools/board.mjs list`) to see active jobs.
    - Check `docs/design/INDEX.md` to see proposals in flight. For non-trivial architectural changes, write or update a design proposal. For obvious work, small tweaks, or bug fixes, work directly or use a standalone job. Work is work.
-2. **Check Memory**: Read `brain/__source/working-memory.md` to ground yourself in recent decisions.
+2. **Check Memory**: Run `node harness/components/brain/tools/wm.mjs show` to read the working memory for the context you are in (the default card when none is loaded). Load a context with the `context-load` skill; it updates that context's working memory as it loads.
 3. **Master Manual**: Refer to [harness/HARNESS.md](harness/HARNESS.md) and [harness/HARNESS-custom.md](harness/HARNESS-custom.md) for tool usage, testing standards, and operator preferences.
 
 

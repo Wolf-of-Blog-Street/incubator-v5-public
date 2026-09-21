@@ -15,7 +15,7 @@ This document is your master operating manual. It teaches you how your workspace
 ### Session Start Protocol & Sequence of Work
 When starting any session or receiving ANY user request:
 1. **Check the Board & Design Docs**: Inspect the project board (`node harness/components/board/tools/board.mjs list` or SQLite in `boards/`) to see active jobs, and check `docs/design/INDEX.md` for active proposals. For non-trivial features, consult or author a design proposal; for obvious work, use standalone jobs.
-2. **Check Active Memory**: Check your brain (`node harness/engine/brain.mjs list` and `brain/__source/working-memory.md`) to recall active state.
+2. **Check Active Memory**: the SessionStart hook has already printed your contexts and the working memory that serves now. Re-read it any time with `node harness/components/brain/tools/wm.mjs show`. Load a context with the `context-load` skill. Never read or edit `brain/__source/wm-*.md` or `working-memory.md` directly; section 5a.
 3. **Read Master Harness & Preferences**: Read [harness/HARNESS.md](HARNESS.md) and [harness/HARNESS-custom.md](HARNESS-custom.md) for tool usage, testing contracts, and custom preferences.
 
 ---
@@ -51,7 +51,7 @@ Your agent home is organized into three distinct zones:
 │       ├── friends/                   # Multi-Model Friends Engine (Claude, Codex)
 │       └── sweeper/                   # 3-Wave & Deep Multi-Model Bug Sweeper
 │
-├── projects/                          # Zone 2: Local-Only Workspaces
+├── projects/                          # Zone 2: Local projects (listed on the seat card, no board)
 │   └── <project-name>/                # Local tools, scratch scripts, low-lifecycle projects
 │       ├── src/                       # Local source code
 │       └── docs/                      # Local documentation
@@ -72,9 +72,8 @@ Your agent home is organized into three distinct zones:
 The project board tracks individual executable **tasks** (work items) that roll up to high-level **design docs / stages**.
 
 ### Key Rules
-- **Only Real Projects in `workspaces/` Have Boards**: Every project in `workspaces/<project>/` has its own dedicated board at `boards/<project>.sqlite`.
-- **`projects/` are NOT Managed by the Board**: Folders in `projects/` are small, fast, local-only scripts and experiments; they do not have boards.
-- **GitHub is NOT Required**: Projects in `workspaces/<project>/` do NOT need a GitHub remote — some will have remotes, some are purely local Jujutsu (`jj`) working copies / repositories.
+- **Only Workspaces Have Boards**: every folder in `workspaces/<name>/` is a workspace with a board at `boards/<seat>.<name>.sqlite`. A GitHub remote is recorded when the folder has one of its own, and then it is catalogued fleet-wide.
+- **Projects Are Listed, Not Managed**: folders in `projects/` are local-only. The seat reports them so the operator can see what each seat holds; they have no board, no tasks, no stats.
 - **Docs are Part of the Project**: Documentation lives inside `workspaces/<project>/docs/`. There are **NO separate boards for docs**.
 - **Multi-Project Workflows**: When working across projects, pass `--project <project-name>` to the board CLI (or `--db boards/<project>.sqlite`).
 
@@ -99,8 +98,8 @@ node harness/components/board/tools/board.mjs set <id> --status done
 Every card on the board has a `## Plan & Subtasks` section with four parts. This is how a job is run, whoever created it and however it was created (`board add`, `sync-doc`, the web UI, MCP):
 1. **Design and analysis** (Dev 1): find what the change touches, plan the work.
 2. **Implementation** (Dev 1): do the work. No useless tests to "verify".
-3. **Code verification** (Dev 1): verify it the way a real user would (Chrome for UI). Tick 1–3, write verification notes on the card, set the job to `review`. Never move it to `done` yourself.
-4. **Pair review and approval** (Dev 2): review like a real user, add review notes, move to `done` or write the fault and leave it in `review`.
+3. **Code verification** (Dev 1): verify it the way a real user would (Chrome for UI). Name on the card what the reviewer drives by hand: page addresses, routes, commands, and the seed data it needs. Tick 1–3, write verification notes on the card, set the job to `review`. Never move it to `done` yourself.
+4. **Pair review and approval** (Dev 2): the tests are the floor, not the review. Use the work by hand like a real user and try to break it. Fix what you find yourself, add review notes, move to `done`. A fault does not go back to Dev 1. Only a gap in the design stops the job, and it goes to the designer. Section 8a has the full rules.
 
 Anything you pass as `--details` becomes the job's **Objective** above the checklist. The board adds the checklist on create and restores it if a rewrite drops it, so never delete the `## Plan & Subtasks` section: append your notes below it.
 
@@ -127,18 +126,94 @@ The Board CLI and MCP server transparently load this configuration if present. Y
 
 ## 5. Using Your Brain (`brain/`)
 
-Your brain is your persistent memory store (`node harness/engine/brain.mjs`). It keeps track of durable knowledge across sessions.
+Your brain is your persistent memory (`node harness/engine/brain.mjs`, `brain` below). It holds
+cards (people, projects, tools, skills, references, notes, contexts) joined by edges, each edge
+with a *why*. Forty verbs; `brain <verb> --help` prints the exact shape of any of them.
+
+**Run `brain <verb> --help` before a verb you have not used this session. Never guess flags.**
+
+### Walk the graph first. Search is the last resort.
+The brain is a graph, and you read it by walking it, not by guessing words at it. When you need
+something, in this order:
+
+1. `brain context <slug>`: the roster of the loaded desk. Most of what a desk needs is on it.
+2. `brain relations <slug>`: the edges out of a card the roster gave you, each with its why.
+   Follow them. A product card leads to its research, its ideas, its structure; a research card
+   leads to the file. Two hops from the roster reaches nearly everything a desk owns.
+3. `brain get <slug> --body` for the card itself once the graph has named it.
+4. `brain search` only when the roster and the edges have not named the thing, and then with
+   keywords, not a sentence: `brain search "pocket bible"`, never `brain search "what did NHB say
+   about bible offers"`. Search is full-text over one-line descriptions. It finds words, not
+   meaning.
+
+If you reached for search first, you skipped the map. If search found something the graph did
+not, the graph is missing an edge: add it before you move on.
+
+### Every card is wired, the moment it is made
+A card with no edges is invisible to every desk: the roster never prints it and only search can
+reach it, which is the failure above. Minting a card and linking it are one act, in the same
+command block, never "later":
+
+- **Where it belongs:** `part_of` the project, product or thing it is about.
+- **Who needs it:** `in_context` every desk whose work it serves, one edge per desk, each with a why
+  that says what that desk takes from it.
+- **What it sits beside:** `about <card>` when an agent should read it with another card. There is
+  no `see_also` or `related_to`; use `about`.
+
+This holds for notes and references as much as for skills and tools. A research file on disk
+with no card, or a card with one edge, is a note nobody will find. The test: after minting, run
+`brain context <desk>` for each desk you linked and see the card on the roster.
+
+The verbs are `part_of` / `has_part`, `in_context`, `serves` / `served_by`, `depends_on` /
+`do_before`, `contains` / `advances`, and the weak `about` and `mentions`. Any other verb you
+type registers itself as a new verb (the engine prints "registered new verb"); that is how a
+typo becomes a permanent verb. If you see that line and did not mean it, `brain unlink` and
+`brain register --unregister-verb <name>`.
+
+The one rule that trips agents: verbs that act on a card take the slug **positionally**
+(`get`, `peek`, `relations`, `context`, `set`, `link`, `body`). Verbs that list what is
+attached to a card take **`--for <slug>`** (`tools`, `skills`, `files`). `--for` refuses a
+context on purpose: a context's equipment is read with `brain context <slug>`.
+
+| Task | Command |
+|---|---|
+| What contexts exist, which are loaded | `brain contexts` |
+| Load a desk (prints its members) | `brain context <slug>` · unload: `brain context --drop <slug>` |
+| One card, full | `brain get <slug> --body` · one line: `brain peek <slug>` |
+| A card's edges, both directions, with whys | `brain relations <slug>` |
+| Skills or tools that serve a thing (not a context) | `brain skills --for <slug>` · `brain tools --for <slug>` |
+| Find by text | `brain search "<terms>"` (`--entity skill` to see shaded equipment) |
+| Cohort by filter | `brain list --entity tool --edge in_context:<context>` |
+| New card | `brain new --entity <entity> --slug <slug> --description "<one line>"` |
+| Set a field | `brain set <slug> --field profile.command --to "<value>"` |
+| Wire a card into a context | `brain link <slug> --verb in_context --to <context> --why "<why>"` |
+| A skill or tool serves a thing | `brain link <slug> --verb serves --to <thing> --why "<why>"` |
+| Write a card's body | `echo "<prose>" | brain body <slug>` |
+| Working memory (never by hand) | `node harness/components/brain/tools/wm.mjs show` · see 5a |
+
+Entities you will use: `context` (profile.name, profile.mission), `skill` (profile.name, cadence,
+last_verified), `tool` (profile.name, command, path, url), `project`, `reference`, `note`.
+Put a tool's command in `profile.command` and its path in `profile.path`, not in the description;
+the description is the one line the roster prints, so write it as the line that lets an agent
+choose.
+
+### A context is equipped, not just minted
+A context with only a working memory card is an empty desk: loading it shows one line, and every
+skill and tool stays shaded in search. When you mint a context, wire what serves that world in the
+same turn:
 
 ```bash
-# List active memory notes
-node harness/engine/brain.mjs list
-
-# Create a new memory note
-node harness/engine/brain.mjs new --entity note --slug <slug> --description "<description>"
-
-# End-of-session handoff
-# Run the brain-self-kickoff skill when concluding a session.
+# a skill card per seat skill that applies (one card, wired into every context it serves)
+brain new --entity skill --slug skill-opus-writer --description "Writes market-facing copy on Opus 4.5 with a voice pack"
+brain link skill-opus-writer --verb in_context --to wolf-marketing --why "all WOBS copy runs on it"
+# a tool card per script or service the world uses
+brain new --entity tool --slug deploy-wobs --description "rsync the static site to dev then prod"
+brain set deploy-wobs --field profile.command --to "deploy/push.sh dev|prod"
+brain link deploy-wobs --verb in_context --to wobs-sites --why "the only way the site ships"
 ```
+
+`brain context <slug>` afterwards must list them. The session-start hook says when a loaded
+context has no equipment wired.
 
 ---
 
@@ -153,7 +228,8 @@ node harness/engine/brain.mjs new --entity note --slug <slug> --description "<de
 ### Platform Development & Dogfooding Invariant
 When developing, fixing, or extending Incubator v5 itself:
 1. **Work in `workspaces/incubator-v5/` FIRST**: All code, documentation, engine components, and harness templates (`components/harness/templates/`) MUST be developed, tested, and recorded in Jujutsu (`jj describe`) inside `workspaces/incubator-v5/`.
-2. **Never Edit Deployed Seat Files Directly**: Directly editing files in your seat home (`harness/`, `AGENTS.md`, `CLAUDE.md`) is a fatal failure mode. It bypasses the product repository, starves other fleet seats of updates, will be wiped out on the next harness install, and causes Incubator v5 to die.
+2. **Local edits under `harness/` survive an install, but they are debt**: the installer keeps any shipped file you have changed and puts the new version beside it as `<file>.shipped` (listed under `kept_local` in `harness/manifest.json`). Reconcile it: send the change upstream to the incubator-v5 repo so every seat gets it, then delete your local copy and the `.shipped` twin. A `.shipped` file left lying around is a fork nobody maintains.
+   **Never Edit Deployed Seat Files Directly** (the rule stands; the guard only stops you losing work): Directly editing files in your seat home (`harness/`, `AGENTS.md`, `CLAUDE.md`) is a fatal failure mode. It bypasses the product repository, starves other fleet seats of updates, is kept only as an unmaintained fork, and causes Incubator v5 to die.
 3. **Dogfood via `install.mjs`**: Once changes are verified and recorded in Jujutsu inside `workspaces/incubator-v5/`, dogfood the update into your own seat (and target fleet seats) by running:
    ```bash
    node workspaces/incubator-v5/components/harness/tools/install.mjs <target-seat-path>
@@ -161,7 +237,60 @@ When developing, fixing, or extending Incubator v5 itself:
 
 ---
 
-## 6a. Using Another Project's Code or Docs
+## 5a. Working Memory Is Per Context
+
+Working memory is one card per context, plus a default card (`working-memory`) used when no
+context is loaded. A context's card is `wm-<context>`, a note with an `in_context` edge into it.
+
+```bash
+node harness/components/brain/tools/wm.mjs which     # which card serves now
+node harness/components/brain/tools/wm.mjs show      # read it
+```
+
+**Every update is written by Opus 4.5, never by you.** You pass a digest of what you know now; the
+`wm` tool asks the `lean-opus-4-5` friend to rewrite the card whole and writes the result through
+the brain. Three moments trigger it, each with its own skill:
+
+| Moment | Skill | Event |
+|---|---|---|
+| You load a context | `context-load` | `load`: fold in what you were doing that belongs here, drop what is stale |
+| Something the next agent must know changes mid-session | (no skill: run it yourself) | `change`: a new card, tool or reference on the desk, a fact learned, a constraint found. The update is the last step of the change. Never "it will pick it up later" |
+| You finish work | `brain-session-end` | `end`: leave the next agent everything it needs, nothing it does not |
+| You hand off with a kickoff | `brain-self-kickoff` | `kickoff`: clean state of play plus exact next actions |
+
+A SessionStart hook (`harness/components/brain/tools/session-start.mjs`, merged into the seat's
+`.claude/settings.json` by the installer) prints the contexts roster, the serving card and its body
+at the start of every session, and says whether to load a context, ask the operator, or stay on
+default.
+
+The update prompt carries the desk roster (every tool, skill and reference wired into the context),
+so a card rewritten on any event can point at what is on the desk. Equipment you wire reaches the
+card only through an update; wire it, then run `--event change`.
+
+Working memory is not a record. It is never a record. It is not a log, a decisions list, a set of
+laws, or a diary of what the operator said. The record is the live code and `docs/`. The card holds
+only what a future agent must know or it will get hurt: state of play, live constraints, gotchas,
+where things are, what is mid-stream, exact next actions.
+
+### Workspaces and projects on the board
+
+`workspaces/<name>/` is a **workspace**: it has a board, and when it has a GitHub remote of its
+own it is listed fleet-wide under the Workspaces tab with whichever seat has it checked out.
+`projects/<name>/` is a **project**: local-only, listed on the seat's own card, no board. The SessionStart hook reports both to the board every session
+(`harness/components/board/tools/sync-workspaces.mjs`); run it with `--dry-run` to see what it
+would report. Folders starting with `_` or `.` are ignored. Nothing is removed automatically.
+
+## 6a. Knowing the Fleet
+
+You are one seat in a fleet. Before you take on work that another seat owns, look at the roster. Each seat's `Notes:` line says what it owns and where its remit ends:
+
+```bash
+node harness/components/board/tools/fleet.mjs list
+```
+
+If a request belongs to another seat, say so and point the operator at that seat. Do not build a parallel version of its work.
+
+## 6b. Using Another Project's Code or Docs
 
 Every project in the fleet is a GitHub repository, and the operator owns all of them. Nothing stops one seat from building on another project's work:
 
@@ -178,16 +307,23 @@ curl -s -H "Authorization: Bearer $FALCON_BOARD_TOKEN" "$FALCON_BOARD_URL/api/v1
 
 Work on the clone the way you work on any workspace project. Push to its GitHub repo when the owning seat should pick the change up. Only tasks are per-seat; roster, catalog, and docs are fleet-wide.
 
-## 7. The 3-Tier Documentation System
+## 7. The 4-Tier Documentation System
 
-All major repositories in `workspaces/<project>/` maintain their documentation in **`<project>/docs/`**:
+Every project keeps its documentation in a `docs/` tree, either inside the project
+(`workspaces/<project>/docs/`) or as a sibling docs workspace (`workspaces/<project>-docs/`):
 
+0. **`product/` (Non-technical Truth)**: who the users are, what they need, what they must be able to do. `REQUIREMENTS.md` and `STORIES.md` (user stories with acceptance criteria). Nothing here says how the system is built. A design doc cites a story here for its why; a story points at the design doc that delivers it.
 1. **`system/` (Living Truth)**: How the system works and how to run it (`ARCHITECTURE.md` for schemas/subsystems, `MANUAL.md` for CLI workflows/flags).
 2. **`design/` (Transitional Blueprints)**: Architectural specs for active stages and features (`draft` → `in-progress` → `done` → `archive/`).
 3. **`support/` (Living Truth)**: Operational runbooks, health checks, and troubleshooting guides (`RUNBOOK.md`).
 
+User requirements and user stories go in `product/`, never in `system/` (which describes what is)
+and never on the board (a card is a job; a story is a reason for jobs). A story with no design yet
+sits in `STORIES.md` as Open; when a design doc takes it, the row names the doc.
+
 ### Index Invariant
-Every tier directory (`system/`, `design/`, `support/`) **must contain an `INDEX.md`** table cataloging every file and its status.
+Every tier directory (`product/`, `system/`, `design/`, `support/`) **must contain an `INDEX.md`** table cataloging every file and its status.
+`node harness/components/docs/tools/scaffold.mjs <docs-dir>` creates all four tiers; `validate.mjs <docs-dir>` checks them.
 
 ### Living Docs (`docs/system/`)
 `docs/system/` contains the enduring truth of the repository:
@@ -246,6 +382,51 @@ Work on UX, frontend, web viewer, and UI flows with Chrome to check as you creat
 - **Interactive Verification**: Actively exercise interactive flows (clicking buttons, switching tabs/views, modal/dropdown states, live data reloads) in the browser before marking any UX task complete.
 - **Visual Integrity & Polish**: Confirm layouts, spacing, color contrasts, typography, and responsive resizing visually in the live browser rather than assuming static correctness.
 
+### 8.6 Tests Are Lean
+The real test of a job is a person or a reviewer who uses the result. Automated tests are a small safety net, not proof. A suite as large as the code it tests slows every check and proves little.
+- **Designer**: for each behaviour, name only the tests that can catch a real bug that nothing else catches. One worked example with exact inputs and expected values for each rule that computes something. One parametrized table for the error codes a caller can really reach. One idempotency case for each writer. About ten cases at most in a section. Name the reviewer's hands-on targets instead.
+- **Coder**: write the card's tests, and one test for each branch that can really fail. Extend the existing tests first. No test that asserts nothing, that tests a mock's own arguments, the language, the framework, a private helper or a log line.
+- **Reviewer**: before it ships, delete tests that assert nothing, repeat a branch, test the framework, duplicate a cheaper test, or pin a detail the design does not state. Keep the tests the design names, and one test for each bug found by hand. Coverage still passes. Report tests added, deleted and merged.
+- **Orchestrator**: at the end of each phase, sweep the tests of the finished work by the same rules. Record the counts and the check time, before and after.
+- **The check runs the suite once.** Collect coverage in that same run, and run pure unit tests in parallel. A check that runs the suite a second time for coverage doubles the time of every merge.
+
+---
+
+## 8a. The Coder and Reviewer Build Loop
+Use this loop when a project has a complete design and many jobs. Each job runs in its own Jujutsu workspace with its own ports. A coder builds the job. A reviewer uses it, fixes it and ships it. Templates: `harness/components/harness/templates/build-loop/` (prompts, `chain.sh`, `merge.sh`, `main-push.sh`). Copy them into the seat and fill in the project's names.
+
+### The rule: nothing goes back to the coder
+A loop of fail, resend and review again costs a full review on each turn. The reviewer has the context and the running stack, so the reviewer fixes the fault. Only one thing goes back, and it goes to the **designer**: a gap in the design (a missing name, a rule that cannot work, two sections that disagree). The designer corrects the design doc and restarts the reviewer in the same workspace. The reviewer never guesses a design.
+
+### The coder
+One job, only the files the card lists plus their tests, never an invented name, no network in tests. While it works it runs only the tests of the files it touches. It runs the full check one time, at the end. Its last message is its report.
+
+### The reviewer
+1. Reads the whole diff against the design.
+2. Runs the full check and the card's acceptance tests. **This is the floor, not the review**: the coder wrote those tests to pass.
+3. **Uses the work by hand, as a developer who must rely on it tomorrow.** It starts its own stack in the job's workspace, on its own ports, and drives the real thing. It never judges behaviour from code or from a mock.
+   - **UI**: a real browser at desktop and phone width; every control; every form with good, bad and empty input; every link; empty and error states; long values; the keyboard; the console and the network panel; and a judgement: would the owner find this clear and quick? Screenshots are kept.
+   - **API**: live calls. The good case, every listed error code, a missing and a wrong token, a body over the limit, page two, the same write twice. Replies compared with the contract field by field.
+   - **CLI**: real runs in table and JSON form, bad arguments, exit codes.
+   - **Connector**: twice on recorded replies (no row changes), a bad secret, a broken reply, rows read back with a real query.
+   - **Pipeline**: a real batch end to end, the same batch again, a worker stopped mid-batch.
+   - **Migration and queries**: a fresh store and a seeded store; query results against the design's worked figures.
+   - **Scripts and deploy code**: in a container, twice.
+   It tries to break the work. The inputs that matter are the ones the coder did not think of.
+4. Fixes everything it found, in the same workspace and revision, under the coder's rules. A required behaviour with no asserting test gets the test the design names. A bug found by hand gets the one test that would have caught it. It does not rewrite correct code for taste. It cuts the tests to the lean rules (8.6).
+5. Runs the check again, and repeats the hands-on use for what it changed.
+6. **Ships**: it runs `merge.sh` itself. Verdicts: **SHIPPED**, **SHIPPED-FIXED** (each change listed: file:line, what the design says, what the code did, what the reviewer did, tests added, changed or deleted), or **BLOCKED** (a design gap, or a merge that failed twice). Its report leads with what it used by hand and what it saw, with real output and screenshots. Check results come after.
+
+### The designer and the orchestrator
+- The job card names what the reviewer drives: page addresses, routes, commands, seed rows.
+- Never run the merge script for a job the reviewer shipped. Never send a fault to a coder. A review that started on an old prompt and returns FAIL gets a new reviewer, not a coder.
+- **Chain the reviewer to the coder's exit** (`chain.sh`), so no job waits to be noticed. That wait measured 19% of job time on a real build.
+
+### The merge script and the lock
+`merge.sh` is the only way a job reaches main. It takes the lock, rebases the job onto main, runs the full check on the **rebased** revision in the job's workspace, and only when that check passes it moves main, pushes, closes the board job and forgets the workspace. On a conflict or a failed check it exits non-zero with the output, and main has not moved.
+- **One writer to main at a time, and every writer takes the lock.** A doc commit that moves main during a job's merge check makes the merge fail. Doc commits and hotfixes go through `main-push.sh`, which takes the same lock.
+- The lock is a folder. Its `owner` file names the owner and its pid. When a run is killed inside the merge script, its lock stays behind; the next caller sees that the pid is dead and clears it. To clear one by hand: read `owner`, confirm with `kill -0 <pid>` that the process is gone, then remove the lock folder.
+
 ---
 
 ## 9. Friends Engine (`components/friends`)
@@ -254,7 +435,26 @@ The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Co
 
 ### Supported Friends & Models
 - **Claude (`claude`)**: Anthropic Claude Code CLI (`claude-fable-5-1`, `claude-opus-4-8`).
+- **Lean Opus 4.5 (`lean-opus-4-5`)**: the `claude` CLI pinned to `claude-opus-4-5` with `--strict-mcp-config` (zero MCP servers). The writing model.
 - **Codex (`codex`)**: OpenAI Codex CLI (`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.5`).
+- **Kimi (`kimi`)**: Moonshot Kimi Code CLI (`kimi-k3`).
+- **Grok (`grok`)**: xAI Grok Build CLI (`grok-4.6`, `grok-4.5`), `--reasoning-effort` supported.
+- **OpenCode (`opencode`)**: open-weight runner (`deepseek-coder-v2`).
+
+### Viewers (`harness/tools/viewers`)
+Operator-facing HTML pages come from the shipped templates, never freestyled:
+`node harness/tools/viewers/render.mjs --list` (bakeoff, report, sidebyside), then
+`node harness/tools/viewers/render.mjs <template> <data.json> -o <out.html>`. Themed dark1, one
+self-contained file, opened as file://. The `viewers` skill has the data shapes.
+
+### Default Skills
+The installer ships these skills into every seat, in both `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex, OpenCode, agy): `brain-self-kickoff`, `context-load`, `brain-session-end`, `viewers`, `opus-writer`, `world-class-hooks`, `friends`, `bug-sweeper`. Voice packs ship to `data/opus-writer/voice-pack/`. Harness-shipped skills are overwritten on every install; skills a seat adds itself are left alone. Sources live in `components/harness/skills/` and `components/brain/skills/`.
+
+### Long Runs Have No Clock
+A friend run has **no timer** unless the caller sets one. `friend run` and `dispatchFriend` default to none; `--timeout 0` (or less) also means none. A timer that fires mid-job kills the agent with no report, and the next agent inherits half-done code.
+- A live orchestrator watches the age of each run and decides by judgement when one has gone on too long.
+- Set a timer only for a quick call: a probe (`--timeout 60000`), a short second opinion.
+- A run that a timer cut fails loudly with "timed out ... the work is NOT finished". A run cut from outside is **resumed in the same workspace**. It is never read as a verdict.
 
 ### Key Capabilities
 1. **Isolated Jujutsu Child Revisions (`jj new`)**: Dispatches run in an isolated working copy without dirtying the parent agent's workspace.
@@ -277,6 +477,8 @@ The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Co
 The **Bug Sweeper** is Incubator v5's autonomous quality & invariant assurance engine. It supports both high-throughput Gemini-powered sweeps and deep multi-model audits.
 
 ### 10.1 Standard 3-Wave Gemini Sweep
+One **sweep** is three **waves** and a judge. Each wave reads the output of the wave before it.
+
 1. **Wave 1 (Breadth & Story Walkthrough)**: High-throughput mental walkthrough matching specs to code via `gemini-3.6-flash`.
 2. **Wave 2 (Depth & Operational Reality)**: Invariant auditing, state machine race conditions, and silent data corruption via `gemini-3.8-flash`.
 3. **Wave 3 (Dynamic Adversarial Tests)**: Synthesizes and executes real Node.js test scripts (`node:test`) to dynamically verify bugs.
@@ -291,16 +493,51 @@ node harness/components/sweeper/tools/sweep.mjs --target workspaces/incubator-v5
 When the **`--deep`** flag is passed, the sweeper escalates into a multi-model heterogeneous audit pipeline:
 1. **Gemini Fast Baseline**: Generates scope, story context, and initial operational reality scans.
 2. **Claude Fable 5.1 (`claude-fable-5-1`)**: Analyzes real-world workflow consistency, edge cases, and ergonomic failure scenarios.
-3. **Codex Astra High (`gpt-6-astra`)**: Deep reasoning sweep focused strictly on security holes, tenant boundary breaches, data loss, and storage invariant violations.
-4. **Sane Judge**: Cross-model synthesis, dynamic test execution, and final unified verdict in `.runs/<sweep-id>/deep-summary.md`.
+3. **Claude Opus 5 (`claude-opus-5`, `xhigh` effort)**: The same brief as Fable at the highest reasoning effort, for the faults a faster pass misses. It can take up to 30 minutes.
+4. **Codex Astra High (`gpt-6-astra`)**: Deep reasoning sweep focused strictly on security holes, tenant boundary breaches, data loss, and storage invariant violations.
+5. **Sane Judge**: Cross-model synthesis, dynamic test execution, and final unified verdict in `.runs/<sweep-id>/deep-summary.md`.
 
 ```bash
-# Run deep multi-model sweep (Gemini + Fable 5.1 + Astra High)
+# Run deep multi-model sweep (Gemini + Fable 5.1 + Opus 5 xhigh + Astra High)
 node harness/components/sweeper/tools/sweep.mjs --target workspaces/incubator-v5/components/board --spec workspaces/incubator-v5/docs/design/board.md --deep
 
 # Optional controls
 node harness/components/sweeper/tools/sweep.mjs --target <target> --deep --effort high --security
 ```
+
+### 10.3 Sweeps: run one after another, pass the findings back
+Words: a **wave** is one model pass. A **sweep** is one full run: three waves and the judge, or the full `--deep` pipeline. "Run another sweep" means a full run on the same target, with the ledger.
+
+One sweep finds the surface bugs. The second and later sweeps find the deep ones, because they know what is fixed, what is rejected and why, and where to look next. That knowledge is the **sweep ledger**. `--prior <file>` gives it to every wave, to the judge, and to every `--deep` model. Standard and deep sweeps read and feed the same ledger.
+
+Each target has one ledger and one folder: `.runs/sweeps/<target-slug>/ledger.md`, with the runs next to it (`sweep-1`, `sweep-2`, `deep-3`, in order).
+
+The loop, for each sweep:
+1. **Run.** Pass `--prior` from the second sweep on.
+2. **Give a verdict on each stamped bug.** Check it against the real system, not against the report. A generated test that fails is proof of the test, not of the bug: read it.
+3. **Fix the real ones** at the root cause. Leave a regression test that fails on the old code.
+4. **Write the ledger** (below). Do this before the next sweep, in the same turn as the fix.
+5. **Sweep again** when the operator asks, or when a fix changed much code. Stop when a sweep stamps nothing that is real.
+
+The ledger has four parts. Keep it current: change an entry when its state changes. It describes the target now, it is not a diary.
+- **Facts**: what you measured about the real system (payload shapes, header formats, limits). These stop false findings; a model that guesses an API shape is the most common false positive.
+- **Fixed**: finding, location, what the fix does. Later sweeps check that the fix is complete and look for the same fault in sibling code.
+- **Rejected**: finding and the reason. Include what the judge discarded, when you agree. A sweep may raise a rejected finding again only with new proof against the reason.
+- **Look next**: areas no sweep has covered, and the code that the last fixes changed most.
+
+```bash
+T=.runs/sweeps/board
+# sweep 1
+node harness/components/sweeper/tools/sweep.mjs --target components/board --spec docs/design/board.md --run-dir $T/sweep-1
+# verdicts, fixes, write $T/ledger.md, then sweep 2, 3, ...
+node harness/components/sweeper/tools/sweep.mjs --target components/board --spec docs/design/board.md --prior $T/ledger.md --run-dir $T/sweep-2
+# a deep sweep takes the same ledger and adds to it
+node harness/components/sweeper/tools/sweep.mjs --target components/board --spec docs/design/board.md --prior $T/ledger.md --run-dir $T/deep-3 --deep
+```
+
+A good order for code that must not fail: standard sweeps until they go quiet, then one deep sweep with the ledger, then a standard sweep over the deep sweep's fixes.
+
+**Sandbox the run.** Wave 3 runs generated tests with the environment of the sweep command. When the target writes outside the repo (a store in `$HOME`, the macOS Keychain, a live service), start the sweep with the target's paths set to scratch folders, its URLs set to a dead port, and a no-op stand-in first in `PATH` for any system command it calls.
 
 ---
 

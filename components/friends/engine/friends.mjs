@@ -16,6 +16,35 @@ import { resolveFriendEnvironment, SUPPORTED_PROVIDERS } from './sandbox.mjs';
 import { openAccountStore } from './accounts.mjs';
 
 /**
+ * Standard voice-pack system prompt. Three parts, this order, nothing else:
+ * the opening line, the preamble, then the pack (samples only).
+ */
+export const VOICE_OPENING = 'Write in this voice.';
+export const VOICE_PREAMBLE = "These voice styles are for you to understand the style, the sentence structure, the energy and the way the person writes. Don't blindly parrot the same words the person uses, but adapt their style to the task you have.";
+export const VOICE_PACK_DIR = 'data/opus-writer/voice-pack';
+
+export function buildVoiceSystemPrompt(packText) {
+  return `${VOICE_OPENING}\n\n${VOICE_PREAMBLE}\n\n${packText}`;
+}
+
+/**
+ * Resolves a voice pack by name (data/opus-writer/voice-pack/<name>.md under cwd) or by path.
+ * @returns {{ name: string, path: string, text: string }}
+ */
+export function loadVoicePack(nameOrPath, cwd = process.cwd()) {
+  const candidates = [
+    path.resolve(cwd, nameOrPath),
+    path.resolve(cwd, VOICE_PACK_DIR, `${nameOrPath}.md`),
+    path.resolve(cwd, VOICE_PACK_DIR, nameOrPath, 'pack.md')
+  ];
+  const found = candidates.find(c => fs.existsSync(c) && fs.statSync(c).isFile());
+  if (!found) {
+    throw new Error(`Voice pack "${nameOrPath}" not found. Looked in ${VOICE_PACK_DIR}/ under ${cwd}`);
+  }
+  return { name: path.basename(found, '.md'), path: found, text: fs.readFileSync(found, 'utf8') };
+}
+
+/**
  * Default Built-in Friends Catalog
  */
 export const DEFAULT_FRIENDS_CATALOG = {
@@ -25,6 +54,7 @@ export const DEFAULT_FRIENDS_CATALOG = {
     displayName: 'Claude Code',
     description: 'Anthropic Claude Code CLI with automated tool calling and analysis',
     promptFlag: '-p',
+    systemPromptFlag: '--system-prompt',
     modelFlag: '--model',
     effortFlag: null,
     defaultModel: 'claude-fable-5-1',
@@ -38,6 +68,23 @@ export const DEFAULT_FRIENDS_CATALOG = {
       'sonnet': 'sonnet',
       'opus': 'claude-opus-4-8'
     },
+    supportsNonInteractive: true
+  },
+  'lean-opus-4-5': {
+    id: 'lean-opus-4-5',
+    binary: 'claude',
+    displayName: 'Lean Opus 4.5',
+    description: 'Claude Code CLI pinned to claude-opus-4-5, text only: no tools, no MCP, no project hooks; the writing model',
+    promptFlag: '-p',
+    systemPromptFlag: '--system-prompt',
+    modelFlag: '--model',
+    effortFlag: null,
+    defaultModel: 'claude-opus-4-5',
+    defaultEffort: null,
+    // text only: no tools, no MCP, no project hooks or settings. Opus writes; it never touches the seat.
+    defaultFlags: ['--strict-mcp-config', '--dangerously-skip-permissions', '--tools', '', '--setting-sources', 'user'],
+    modelAliases: { 'opus-4.5': 'claude-opus-4-5', 'lean': 'claude-opus-4-5' },
+    sandboxProvider: 'claude',
     supportsNonInteractive: true
   },
   codex: {
@@ -72,6 +119,20 @@ export const DEFAULT_FRIENDS_CATALOG = {
     defaultModel: 'kimi-k3',
     defaultEffort: 'high',
     defaultFlags: [],
+    supportsNonInteractive: true
+  },
+  grok: {
+    id: 'grok',
+    binary: 'grok',
+    displayName: 'Grok Build',
+    description: 'xAI Grok CLI for code synthesis and review',
+    promptFlag: '-p',
+    modelFlag: '--model',
+    effortFlag: '--reasoning-effort',
+    defaultModel: 'grok-4.6',
+    defaultEffort: 'high',
+    defaultFlags: ['--always-approve'],
+    modelAliases: { 'grok-4.5': 'grok-4.5', 'grok-4.6': 'grok-4.6', 'grok': 'grok-4.6' },
     supportsNonInteractive: true
   },
   opencode: {
@@ -194,6 +255,13 @@ export function resolveFriendCommand(friendId, options = {}) {
     args.push(...options.extraFlags);
   }
 
+  if (options.systemPrompt) {
+    if (!provider.systemPromptFlag) {
+      throw new Error(`Friend "${friendId}" does not support a system prompt`);
+    }
+    args.push(provider.systemPromptFlag, options.systemPrompt);
+  }
+
   if (options.prompt) {
     if (provider.promptFlag) {
       args.push(provider.promptFlag, options.prompt);
@@ -313,11 +381,13 @@ export function spawnFriendProcess(binary, args, options = {}) {
     if (!options.env?.ANTHROPIC_API_KEY) delete baseEnv.ANTHROPIC_API_KEY;
     if (!options.env?.OPENAI_API_KEY) delete baseEnv.OPENAI_API_KEY;
     if (!options.env?.MOONSHOT_API_KEY) delete baseEnv.MOONSHOT_API_KEY;
+    if (!options.env?.XAI_API_KEY) delete baseEnv.XAI_API_KEY;
     if (!options.inheritLogin) {
       if (!options.env?.CLAUDE_CONFIG_DIR) delete baseEnv.CLAUDE_CONFIG_DIR;
       if (!options.env?.CODEX_HOME) delete baseEnv.CODEX_HOME;
       if (!options.env?.KIMI_HOME) delete baseEnv.KIMI_HOME;
       if (!options.env?.OPENCODE_HOME) delete baseEnv.OPENCODE_HOME;
+      if (!options.env?.GROK_HOME) delete baseEnv.GROK_HOME;
     }
 
     const env = { ...baseEnv, ...(options.env || {}) };
@@ -381,7 +451,7 @@ export function spawnFriendProcess(binary, args, options = {}) {
       if (!isFinished) {
         isFinished = true;
         if (timedOut) {
-          reject(new Error(`Friend process timed out after ${timeoutMs}ms (${binary} ${args.slice(0, 2).join(' ')})`));
+          reject(new Error(`Friend process timed out after ${timeoutMs}ms (${binary} ${args.slice(0, 2).join(' ')}). CUT BY A TIMER THE CALLER SET: the work is NOT finished and this is not a verdict. Resume it in the same workspace, or run it with --timeout 0.`));
         } else {
           const durationMs = Date.now() - startTime;
           resolve({
@@ -397,6 +467,15 @@ export function spawnFriendProcess(binary, args, options = {}) {
 }
 
 /**
+ * A run has no timer unless the caller sets one. 0, a negative number, or text that is not a
+ * number all mean "no timer"; a live orchestrator decides when a run has gone on too long.
+ */
+export function parseTimeoutMs(value) {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) || n < 0 ? 0 : n;
+}
+
+/**
  * High-level orchestration helper: Dispatches a friend within an isolated Jujutsu revision.
  *
  * @param {string} friendId
@@ -406,7 +485,7 @@ export function spawnFriendProcess(binary, args, options = {}) {
  * @param {string} [options.model]
  * @param {string} [options.effort]
  * @param {boolean} [options.noJj=false]
- * @param {number} [options.timeoutMs=180000]
+ * @param {number} [options.timeoutMs=0] - No timer by default. A value above 0 cuts the run after that many ms.
  * @param {Function} [options.onStdout]
  * @param {Function} [options.onStderr]
  * @returns {Promise<object>} Execution report
@@ -421,9 +500,10 @@ export async function dispatchFriend(friendId, options = {}) {
   // 1. Resolve sandboxed environment if provider is supported
   let friendEnv = options.env ? { ...options.env } : {};
   let configDir = null;
-  if (SUPPORTED_PROVIDERS.includes(friendId)) {
+  const sandboxProvider = provider.sandboxProvider || friendId;
+  if (SUPPORTED_PROVIDERS.includes(sandboxProvider)) {
     const sandboxed = resolveFriendEnvironment({
-      provider: friendId,
+      provider: sandboxProvider,
       agentId,
       baseAuthDir,
       customEnv: friendEnv
@@ -468,12 +548,13 @@ export async function dispatchFriend(friendId, options = {}) {
 
   // 3. No pool account: use the operator's own CLI login instead of an empty sandbox profile.
   //    The sandbox only protects the operator's config when a pool credential is in play.
-  const inheritLogin = !activeAccount && SUPPORTED_PROVIDERS.includes(friendId);
+  const inheritLogin = !activeAccount && SUPPORTED_PROVIDERS.includes(sandboxProvider);
   if (inheritLogin) {
     delete friendEnv.CLAUDE_CONFIG_DIR;
     delete friendEnv.CODEX_HOME;
     delete friendEnv.KIMI_HOME;
     delete friendEnv.OPENCODE_HOME;
+    delete friendEnv.GROK_HOME;
     configDir = null;
     if (typeof options.onStderr === 'function') {
       options.onStderr(`[friends] no ${friendId} account in the pool; using the operator's own ${friendId} login\n`);
@@ -488,7 +569,7 @@ export async function dispatchFriend(friendId, options = {}) {
         cwd,
         env: friendEnv,
         inheritLogin,
-        timeoutMs: options.timeoutMs,
+        timeoutMs: options.timeoutMs ?? 0,
         onStdout: options.onStdout,
         onStderr: options.onStderr
       });

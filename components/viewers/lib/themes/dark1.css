@@ -1,0 +1,42 @@
+/* ===========================================================================
+   dark1 — the incubator's standard viewer theme family.
+   ---------------------------------------------------------------------------
+   ONE dark layout/look ("dark1"); the accent palette is swappable. Pick a
+   variant with the <html> data-theme attribute, e.g.:
+
+       <html lang="en" data-theme="dark1-blue">
+
+   Every variant is a COMPLETE swatch (9 palette tokens). The shared,
+   theme-independent tokens (semantic colors + fonts) live in the base :root and
+   are never overridden by a variant.
+
+   This file is a carried copy of the palette source of truth
+   (project-brain-work-system-design docs/viewers/themes/dark1.css). Viewers
+   are self-contained single files (no build step), so lib/page.mjs embeds
+   these blocks inline in the one page stylesheet; keep this copy in sync
+   with the source when a variant changes.
+
+   To ADD a theme: append a :root[data-theme="<family>-<color>"] block with the
+   9 tokens below, then add a row to themes/INDEX.md. New layout family later
+   (e.g. dark2 / light1) = a new file + its own variants.
+   =========================================================================== */
+
+:root{
+  /* shared across ALL themes — semantic colors + fonts (never re-themed) */
+  --amber:#ffb547; --red:#ff6b6b; --green:#5fd38a; --violet:#b89cff;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+
+  /* default palette = dark1-blue (override via <html data-theme="dark1-…">) */
+  --bg:#0a0d12; --panel:#10141b; --panel2:#161c26; --line:#222c39;
+  --text:#e7edf5; --muted:#8493a8;
+  --accent:#5bb0ff; --accent-dim:#41658f; --accent-line:#1f3a5c;
+}
+
+/* ── dark1 variants — each is a full 9-token swatch ───────────────────────── */
+:root[data-theme="dark1-blue"]  {--bg:#0a0d12;--panel:#10141b;--panel2:#161c26;--line:#222c39;--text:#e7edf5;--muted:#8493a8;--accent:#5bb0ff;--accent-dim:#41658f;--accent-line:#1f3a5c}
+:root[data-theme="dark1-green"] {--bg:#0a0e0a;--panel:#111611;--panel2:#161d16;--line:#243024;--text:#e8efe6;--muted:#8aa088;--accent:#7CFC00;--accent-dim:#456a3f;--accent-line:#2c4a17}
+:root[data-theme="dark1-red"]   {--bg:#120a0c;--panel:#1b1012;--panel2:#261619;--line:#39222a;--text:#f5e7ea;--muted:#a88489;--accent:#ff6b6b;--accent-dim:#8f4147;--accent-line:#5c1f2a}
+:root[data-theme="dark1-amber"] {--bg:#120f0a;--panel:#1b1710;--panel2:#261f16;--line:#393022;--text:#f5efe7;--muted:#a89a84;--accent:#ffb547;--accent-dim:#8f7041;--accent-line:#5c451f}
+:root[data-theme="dark1-violet"]{--bg:#0f0a12;--panel:#15101b;--panel2:#1d1626;--line:#2e2239;--text:#efe7f5;--muted:#9a84a8;--accent:#b89cff;--accent-dim:#6a4f8f;--accent-line:#3a2c5c}
+:root[data-theme="dark1-teal"]  {--bg:#0a1212;--panel:#101b1a;--panel2:#162625;--line:#223937;--text:#e7f5f4;--muted:#84a8a4;--accent:#3fe0c7;--accent-dim:#418f82;--accent-line:#1f5c54}

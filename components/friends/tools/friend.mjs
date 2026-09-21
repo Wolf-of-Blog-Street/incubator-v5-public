@@ -10,15 +10,19 @@
  * Usage:
  *   friend list [--json]
  *   friend check <provider>
- *   friend run <provider> "prompt" [--model <m>] [--effort <e>] [--no-jj] [--timeout <ms>]
+ *   friend run <provider> "prompt" [--model <m>] [--effort <e>] [--no-jj] [--timeout <ms>, default none]
  */
 
+import fs from 'node:fs';
 import path from 'node:path';
 import {
+  loadVoicePack,
+  buildVoiceSystemPrompt,
   getFriendsCatalog,
   isBinaryAvailable,
   dispatchFriend,
-  isJjRepository
+  isJjRepository,
+  parseTimeoutMs
 } from '../engine/friends.mjs';
 import { openAccountStore, maskSecret } from '../engine/accounts.mjs';
 import { auditAuthHealth, refreshAccountToken, autoRenewExpiringAccounts } from '../engine/refresh.mjs';
@@ -38,11 +42,15 @@ function parseArgs(rawArgs) {
     autoAbandon: false,
     model: null,
     effort: null,
-    timeoutMs: 180000,
+    timeoutMs: 0,
     cwd: process.cwd(),
     configPath: null,
     accountsPath: null,
-    extraFlags: []
+    extraFlags: [],
+    voice: null,
+    promptFile: null,
+    systemPrompt: null,
+    systemPromptFile: null
   };
 
   const positional = [];
@@ -67,7 +75,7 @@ function parseArgs(rawArgs) {
     } else if (arg === '--threshold') {
       args.thresholdMinutes = parseInt(rawArgs[++i], 10) || 30;
     } else if (arg === '--timeout') {
-      args.timeoutMs = rawArgs[i + 1] ? (parseInt(rawArgs[++i], 10) || 180000) : 180000;
+      args.timeoutMs = parseTimeoutMs(rawArgs[++i]);
     } else if (arg === '--cwd') {
       args.cwd = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : process.cwd();
     } else if (arg === '--config') {
@@ -76,6 +84,14 @@ function parseArgs(rawArgs) {
       args.accountsPath = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
     } else if (arg === '-p' || arg === '--prompt') {
       args.prompt = rawArgs[++i] || null;
+    } else if (arg === '--prompt-file') {
+      args.promptFile = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
+    } else if (arg === '--voice') {
+      args.voice = rawArgs[++i] || null;
+    } else if (arg === '--system-prompt') {
+      args.systemPrompt = rawArgs[++i] || null;
+    } else if (arg === '--system-prompt-file') {
+      args.systemPromptFile = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
     } else if (arg.startsWith('-')) {
       args.extraFlags.push(arg);
     } else {
@@ -115,11 +131,17 @@ Account Management:
 
 Options:
   -p, --prompt <text>                 The prompt or mandate to execute
+  --prompt-file <path>                Read the prompt from a file (use - for stdin); piped stdin also works
   -m, --model <name>                  Override default model (e.g. gpt-6-astra, sonnet)
   -e, --effort <level>                Override reasoning effort (e.g. high, ultra)
+  --voice <name|path>                 Voice pack: data/opus-writer/voice-pack/<name>.md becomes the system prompt
+                                      (opening line + standard preamble + samples). Claude friends only.
+  --system-prompt <text>              Raw system prompt (Claude friends only)
+  --system-prompt-file <path>         Raw system prompt read from a file
   --no-jj                             Bypass Jujutsu change isolation (execute in current working copy)
   --auto-abandon                      Abandon the Jujutsu change if execution fails
-  --timeout <ms>                      Process execution timeout in milliseconds (default: 180000)
+  --timeout <ms>                      Cut the run after <ms>. Default: 0, no timer (0 or less = no timer).
+                                      Set one only for a quick call, e.g. --timeout 60000 for a probe.
   --cwd <path>                        Target working directory (default: current directory)
   --config <path>                     Custom friends.json catalog path
   --accounts <path>                   Custom accounts.json storage path
@@ -130,6 +152,7 @@ Examples:
   friend list
   friend check codex
   friend run claude "Audit server.mjs for race conditions"
+  friend run lean-opus-4-5 "$JOB" --voice tom-sales --no-jj
   friend accounts list
   friend accounts add claude --api-key sk-ant-12345 --label "Primary Claude Key"
   friend accounts check
@@ -216,6 +239,14 @@ async function handleRun(args) {
     return 1;
   }
 
+    if (args.promptFile) {
+      args.prompt = args.promptFile === '-' || args.promptFile.endsWith('/-')
+        ? fs.readFileSync(0, 'utf8')
+        : fs.readFileSync(args.promptFile, 'utf8');
+    } else if (!args.prompt && !process.stdin.isTTY) {
+      const piped = fs.readFileSync(0, 'utf8');
+      if (piped.trim()) args.prompt = piped;
+    }
   if (!args.prompt) {
     console.error('Error: Prompt is required. Example: friend run codex "Refactor parser"');
     return 1;
@@ -239,8 +270,16 @@ async function handleRun(args) {
   }
 
   try {
+    let systemPrompt = args.systemPrompt;
+    if (args.systemPromptFile) systemPrompt = fs.readFileSync(args.systemPromptFile, 'utf8');
+    if (args.voice) {
+      const pack = loadVoicePack(args.voice, args.cwd);
+      systemPrompt = buildVoiceSystemPrompt(pack.text);
+      if (!args.json) console.log(`Voice: ${pack.name} (${pack.path})\n`);
+    }
     const report = await dispatchFriend(args.provider, {
       prompt: args.prompt,
+      systemPrompt,
       cwd: args.cwd,
       model: args.model,
       effort: args.effort,

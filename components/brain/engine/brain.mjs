@@ -476,8 +476,8 @@ class BrainError extends Error {}
 function die(msg) { throw new BrainError(msg); }
 
 // OWNER calendar date (NOT UTC, NOT the process TZ) — an evening event must not roll
-// to tomorrow (UTC+1 vs UTC-5), and a migration run on a US server must
-// stamp the owner's local date, not the box's. The owner timezone (IANA) comes from
+// to tomorrow (Lisbon +1, Charlotte -4/5), and a migration run on a US server must
+// stamp Tom's Lisbon date, not the box's. The owner timezone (IANA) comes from
 // brain/__meta/config.json, loaded once (H17); absent ⇒ process TZ. Records are
 // write-frozen, so a wrong `occurred` is permanent — this is load-bearing.
 function localDate(tz, d = new Date()) { return d.toLocaleDateString('en-CA', tz ? { timeZone: tz } : undefined); }
@@ -547,7 +547,7 @@ function openDb(ctx) {
     db = new DatabaseSync(path.join(dir, 'index.sqlite'));
     // busy_timeout FIRST — a WAL-mode conversion (or a concurrent writer) needs an
     // exclusive moment; without the timeout set, that first statement fails instantly
-    // instead of waiting for the other session (operator + sweep + gardener are concurrent).
+    // instead of waiting for the other session (Tom + sweep + gardener are concurrent).
     // busy_timeout raised 5s→10s (bug #10-lite): full sweeps ran 12–54s under 10 concurrent
     // agents and blew the old 5s wait → uncaught 'database is locked'. The sweep also
     // self-retries (withBusyRetry); deep concurrency hardening is stress round 2.
@@ -7004,7 +7004,32 @@ function cmdSearch(ctx, terms, flags) {
           const hitTerms = reduced.filter(t => probe(t.text) > 0);
           if (hitTerms.length && hitTerms.length < reduced.length) { reduced = hitTerms; pass = runPass(reduced); }
         }
-        if (pass.total) {
+        // Every remaining term hits alone but the AND is empty ("nhb bible offer ideas"):
+        // rank by coverage. One OR pass over the same terms, each row scored by how many
+        // terms it matches, best first, then the usual tier/votes/rank order. Rows must
+        // match at least two terms, so the retry never collapses into a single-word sweep.
+        let coverage = null;
+        if (!pass.total && reduced.length > 2) {
+          const termExprs = reduced.map(t => buildMatchExpr([t]));
+          const orExpr = termExprs.map(e => `(${e})`).join(' OR ');
+          const covSQL = termExprs.map(() => `(CASE WHEN n.rowid IN (SELECT rowid FROM fts WHERE fts MATCH ?) THEN 1 ELSE 0 END)`).join(' + ');
+          try {
+            const q = `SELECT * FROM (SELECT n.*, snippet(fts,2,'«','»','…',10) m_whys, snippet(fts,3,'«','»','…',10) m_prof,
+              snippet(fts,6,'«','»','…',10) m_nwhys, snippet(fts,7,'«','»','…',10) m_nprof, ${contextTierSQL(tierNames)} context_tier,
+              (${covSQL}) coverage, rank rk FROM fts JOIN nodes n ON n.slug=fts.slug WHERE fts MATCH ?${statusSQL}${narrow})
+              WHERE coverage >= 2 ORDER BY coverage DESC, context_tier, ${ctx.votesEnabled === false ? '' : 'COALESCE(votes, 0) DESC, '}rk, slug LIMIT ${CAP}`;
+            const rows2 = db.prepare(q).all(...termExprs, orExpr, ...nargs);
+            if (rows2.length) coverage = { rows: rows2, total: rows2.length, of: reduced.length };
+          } catch (e) { coverage = null; if (process.env.BRAIN_DEBUG) console.error("coverage retry failed:", e.message); }
+        }
+        if (coverage) {
+          const kept = new Set(reduced);
+          const dropped = lexTokens.filter(t => !kept.has(t)).map(t => t.text);
+          out(`  best match (the full query found 0; ranked by terms matched of ${coverage.of}${dropped.length ? `; dropped: ${dropped.join(', ')}` : ''}): ${shownSuffix(coverage.total, Math.min(coverage.rows.length, 10), null)}`);
+          coverage.rows.slice(0, 10).forEach(r => out(`  ${r.coverage}/${coverage.of}  ` + row(r)));
+          printedReduced = true;
+          disclosureTokens = reduced;
+        } else if (pass.total) {
           const kept = new Set(reduced);
           const dropped = lexTokens.filter(t => !kept.has(t)).map(t => t.text);
           out(`  reduced query "${reduced.map(t => t.text).join(' ')}" (dropped: ${dropped.join(', ')}): ${shownSuffix(pass.total, Math.min(pass.rows.length, 10), null)}`);
@@ -7923,7 +7948,7 @@ function cmdDoctor(ctx, _args, flags) {
       dumpCapped(slugDateSignals, p => `  ⚠ ${p}`);
     }
     // the forgotten brain (H23): count + age so it can't grow invisibly. No auto-purge
-    // — deletion is an operator ritual (design in the wave report; discretion call is the operator's).
+    // — deletion is an operator ritual (design in the wave report; discretion call is Tom's).
     const fdir = forgottenDir(root);
     const ffiles = fs.existsSync(fdir) ? fs.readdirSync(fdir).filter(f => f.endsWith('.md')) : [];
     let oldest = null;
@@ -10195,7 +10220,7 @@ function cmdSync(ctx, _args, flags) {
     // bug #10-lite: self-retry the whole sweep on a concurrent-writer lock — it is
     // idempotent (mark-and-sweep from the CURRENT file state), so a rolled-back attempt
     // re-runs cleanly. CHUNKED transactions (H8/Opus-A #20): a single txn over the whole
-    // corpus holds a write lock past busy_timeout and starves the operator's concurrent writes.
+    // corpus holds a write lock past busy_timeout and starves Tom's concurrent writes.
     // Commit every CHUNK. --deep hash-verifies EVERY file (no mtime/size fast path).
     const { added, updated, removed, touched, unchanged, gone, demoted, quarantined, badFilenameSignals } = withBusyRetry(db, () => {
       const stored = new Map();
@@ -10307,7 +10332,7 @@ const VERBS = Object.assign(Object.create(null), {
   freeze: { impl: cmdFreeze, kind: 'write', applyWriteOp: true, flags: { occurred: 'str', outcome: 'str' }, desc: 'turn a future (or record-tense card) into a frozen record', help: `freeze — turn an open future into a frozen record; conjugates its edges.\n  usage: brain freeze <slug> [--occurred YYYY-MM-DD] [--outcome done|dropped|superseded]\n  --outcome  done (default) conjugates the edges and leaves the record STATUSLESS (records\n             carry no completion status); dropped/superseded keep prospective verbs and\n             stamp that status — visible history that says so on the row.\n  a CARD whose entity registers the record tense (memory, event) also freezes card→record:\n             --occurred is REQUIRED; ONLY a memory card derives it (dated slug memory-YYYY-MM-DD /\n             YYYY-MM-DD- prefix, else date_created) — every other entity must pass --occurred.\n  refuses an obligation without --force (recurring — roll the next instance with brain roll, §7.5).` },
   roll: { impl: (ctx, a, f) => cmdRoll(ctx, a, f, { runRead: embeddedRead }), kind: 'write', flags: { occurred: 'str', cycle: 'str', why: 'str', ask: 'str' }, desc: 'roll an obligation: file the cycle + advance due (engine computes the date)', help: `roll — the §7.5 obligation roll as ONE atomic act; the engine does the date math.\n  usage: brain roll <slug> --occurred <YYYY-MM-DD> [--cycle current|next] [--ask <id>] [--why "…"]\n  files the cycle (record '<occurred>-<slug>' + filed_by edge), then advances due exactly ONE cadence\n  step from the old due and pushes the change — an elapsed cycle is never skipped: rolling late leaves\n  the remaining owed cycles in the outbox (one roll per owed cycle; the roll says how many remain).\n  cadence: reads profile.cadence then profile.period — ${ROLL_CADENCE_FORMS}; anything else refuses (never guessed).\n  ambiguous fork (filed BEFORE the current due — settle-owed vs paid-early): refuses with a roll-cycle\n  ask recorded in the ledger (brain asks) with an id; answer by CITING it: --cycle current|next --ask <id>\n  (--cycle current = settle the owed prior cycle, due stays; --cycle next = paid early, due advances one cadence).\n  answering blind (--cycle with no --ask) while that ask is open refuses and names the id; with no open ask it\n  mints+answers a same-invocation row (audit-visible). each filing stamps profile.cycle, so once history is\n  recorded the fork resolves from evidence and the open ask auto-withdraws — it never asks again for that obligation.\n  also an apply op: {"op":"roll","slug":"…","occurred":"…"[,"cycle":"…","ask":"…","why":"…"]}. One transaction: any failure rolls the filing back too.` },
   new: { impl: cmdNew, kind: 'write', applyWriteOp: true, flags: { entity: 'str', slug: 'str', description: 'str', class: 'str', due: 'str', occurred: 'str', date_created: 'str', status: 'str' }, desc: 'create a node', help: `new — create a node.\n  usage: brain new --entity <entity> --slug <slug> --description "<text>" [--class C] [--due D] [--occurred D] [--date_created D] [--status S]\n  a status-less effective future is written status:open; an explicit status wins; cards/records stay unstamped\n  e.g. brain new --entity person --slug <slug> --description "..."` },
-  set: { impl: cmdSet, kind: 'write', applyWriteOp: true, flags: { field: 'str', to: 'str', del: 'bool' }, desc: 'set/remove a field (description/status/due/profile.*)', help: `set — set or remove one scalar field (parse→mutate→serialize; body untouched).\n  usage: brain set <slug> --field <dot.path> --to <value> | --del\n  settable: description, status, due, occurred, important (+ expires/renews/visibility/superseded_by), profile.<key>\n  (block fields have their own verbs: link/unlink · push · body; class/entity are identity — new/register).\n  on a record: warns + needs --force (frozen past); class/occurred on a record: refused.\n  [--base-hash <h> [--force]]   CAS: refuse if the file changed since your read\n  e.g. brain set <slug> --field profile.country --to the owner locale` },
+  set: { impl: cmdSet, kind: 'write', applyWriteOp: true, flags: { field: 'str', to: 'str', del: 'bool' }, desc: 'set/remove a field (description/status/due/profile.*)', help: `set — set or remove one scalar field (parse→mutate→serialize; body untouched).\n  usage: brain set <slug> --field <dot.path> --to <value> | --del\n  settable: description, status, due, occurred, important (+ expires/renews/visibility/superseded_by), profile.<key>\n  (block fields have their own verbs: link/unlink · push · body; class/entity are identity — new/register).\n  on a record: warns + needs --force (frozen past); class/occurred on a record: refused.\n  [--base-hash <h> [--force]]   CAS: refuse if the file changed since your read\n  e.g. brain set <slug> --field profile.country --to Portugal` },
   link: { impl: cmdLink, kind: 'write', applyWriteOp: true, flags: { verb: 'str', to: 'str', why: 'str' }, desc: 'add an edge (verb + why)', help: `link — add an edge <slug> → verb → <target> (warns on a dangling target, never blocks).\n  usage: brain link <slug> --verb <v> --to <slug> [--why "…"] [--base-hash <h> [--force]]\n  e.g. brain link <slug> --verb works_at --to acme-inc --why "since 2024"` },
   unlink: { impl: cmdUnlink, kind: 'write', applyWriteOp: true, flags: { verb: 'str', to: 'str' }, desc: 'remove an edge', help: `unlink — remove an edge.\n  usage: brain unlink <slug> --verb <v> --to <slug> [--base-hash <h> [--force]]` },
   push: { impl: cmdPush, kind: 'write', applyWriteOp: true, flags: { x: 'str', y: 'str', why: 'str', record: 'str' }, desc: 'prepend an updated[] entry (FILO)', help: `push — prepend an updated[] entry (FILO, newest first).\n  usage: brain push <slug> --x <what> --y <date> [--why "…"] [--record <slug>]\n  capped at 200; a push at capacity drops the oldest with a structured warning (longer history belongs in records)\n  e.g. brain push <slug> --x profile.city --y 2026-03-14 --why "moved" --record <record-slug>` },

@@ -66,7 +66,9 @@ export function bindNavigationEvents(fetchData, render) {
       if (item && item.dataset.agentId) {
         e.stopPropagation();
         closeAgentMenu();
-        switchAgent(item.dataset.agentId, () => fetchData(false));
+        // Picking a seat from the Fleet or Workspaces overview opens that seat's board.
+        const opensBoard = state.activeView === 'fleet' || state.activeView === 'projects';
+        switchAgent(item.dataset.agentId, () => { if (opensBoard) setView('kanban', render); fetchData(false); });
       }
     });
   }

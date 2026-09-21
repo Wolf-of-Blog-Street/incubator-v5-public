@@ -1,0 +1,14 @@
+# Product Documentation Index
+
+This directory holds the **non-technical truth** for {{PROJECT_NAME}}: who it is for, what they
+need, and what they must be able to do. Nothing in here says how the system is built; that is
+`../system/`. A design doc in `../design/` cites a story or requirement here for its why.
+
+---
+
+## Product Document Registry
+
+| Document | Status | Description |
+| :--- | :--- | :--- |
+| [`REQUIREMENTS.md`](REQUIREMENTS.md) | Living | User requirements: who the users are, what they need, what the product must and must not do. |
+| [`STORIES.md`](STORIES.md) | Living | User stories with acceptance criteria, each pointing at the design doc that delivers it. |

@@ -13,7 +13,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
-export const SUPPORTED_PROVIDERS = ['claude', 'codex', 'kimi', 'opencode'];
+export const SUPPORTED_PROVIDERS = ['claude', 'codex', 'kimi', 'opencode', 'grok'];
 
 export function getDefaultAuthBaseDir() {
   return path.join(os.homedir(), '.incubator', 'auth');
@@ -107,6 +107,11 @@ export function resolveFriendEnvironment({
     }
   } else if (provider === 'opencode') {
     env.OPENCODE_HOME = configDir;
+  } else if (provider === 'grok') {
+    env.GROK_HOME = configDir;
+    if (!customEnv.XAI_API_KEY) {
+      delete env.XAI_API_KEY;
+    }
   }
 
   assertZeroLeakage(provider, env);

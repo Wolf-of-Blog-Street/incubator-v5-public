@@ -111,12 +111,13 @@ export function autoDiscoverSpec(targetPath, baseDir = process.cwd()) {
           try {
             const text = fs.readFileSync(filePath, 'utf8');
             // Check if doc mentions the target component or path
-            if (
+            // A short or default target ('.', 'src', 'engine') matches nearly every doc: only a real name may match.
+            const named = targetBase.length >= 4 && targetBase !== path.basename(baseDir);
+            if (named && (
               file.includes(targetBase) ||
               text.includes(`components/${targetBase}`) ||
-              text.includes(targetPath) ||
               text.includes(`\`${targetBase}\``)
-            ) {
+            )) {
               return filePath;
             }
           } catch {

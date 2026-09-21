@@ -39,14 +39,14 @@ export function generateDefaultTaskPlan(title, track = 'core', brief = null) {
     ``,
     `> **Pair-Programmer Mode**: All tasks are executed in pair-programmer mode.`,
     `> - **Dev 1 (Implementer)**: Does the first 3 parts (design, implementation, verification). Leaves task in \`in-review\` for Dev 2.`,
-    `> - **Dev 2 (Pair / Reviewer)**: Reviews the work, adds review notes to the task, and moves to \`done\` upon passing.`,
-    `> - **Cycle**: This cycle repeats until the task is complete. Dev 1 implements and fixes, Dev 2 reviews and approves.`,
+    `> - **Dev 2 (Pair / Reviewer)**: Uses the work by hand as a real user or developer would, fixes what it finds, adds review notes, and moves to \`done\`.`,
+    `> - **No loop back**: a fault goes to Dev 2 to fix, not back to Dev 1. Only a gap in the design goes back, and it goes to the designer.`,
     ``,
     `## Plan & Subtasks`,
     `- [ ] 1. Initial design and analysis for [${track}] ${title}. Investigate what parts of the codebase this change will touch and plan out your work. (Dev 1)`,
     `- [ ] 2. Implementation: focus on the work. Don't invent useless tests to "verify". (Dev 1)`,
-    `- [ ] 3. Code verification: test that it works. Don't use useless unit tests here either. Verify it the way a real user would. After verification leave the task in in-review for the operator, don't move to done until after pair-review. (Dev 1)`,
-    `- [ ] 4. Pair review & approval: review the work according to the same rules (no useless tests, verify like a real user would). Add review notes to the task. If it passes, move to done. If there is a fault, note that in the review notes. (Dev 2)`
+    `- [ ] 3. Code verification: test that it works. Don't use useless unit tests here either. Verify it the way a real user would. Name below what the reviewer drives by hand: page addresses, routes, commands, and the seed data it needs. After verification leave the task in in-review, don't move to done until after pair-review. (Dev 1)`,
+    `- [ ] 4. Pair review & approval: the tests are the floor, not the review. Use the work by hand like a real user (UI in a real browser, API live, commands for real) and try to break it. Fix what you find yourself, add the one test that would have caught it, delete tests that assert nothing. Add review notes (what you used, what you saw, what you changed), then move to done. Only a design gap stops the job: note it for the designer. (Dev 2)`
   ].join('\n');
 }
 

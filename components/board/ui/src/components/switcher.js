@@ -30,7 +30,7 @@ export function renderAgentSwitcherMenu() {
 export function renderProjectSwitcherMenu() {
   if (!dom.projectMenuList) return;
   const currentAgent = (state.roster || []).find(a => a.id === state.activeAgentId);
-  const projects = currentAgent?.projects || [];
+  const projects = (currentAgent?.projects || []).filter(p => (p.kind || 'workspace') !== 'project');
 
   if (projects.length === 0 || state.activeView === 'fleet' || state.activeView === 'projects') {
     if (dom.projectSwitcherDropdown) dom.projectSwitcherDropdown.style.display = 'none';
@@ -43,17 +43,19 @@ export function renderProjectSwitcherMenu() {
     dom.activeProjectName.textContent = activeProj.name || activeProj.id;
   }
 
-  dom.projectMenuList.innerHTML = projects.map(proj => {
+  const item = proj => {
     const isSelected = proj.id === state.activeProjectId;
-    const stats = proj.stats || {};
-    const pct = stats.progressPct ?? 0;
+    const pct = (proj.stats || {}).progressPct ?? 0;
     return `
       <button type="button" class="project-menu-item ${isSelected ? 'active' : ''}" data-project-id="${escapeHtml(proj.id)}" role="menuitem">
         <span class="project-menu-title">${escapeHtml(proj.name || proj.id)}</span>
         <span class="project-menu-badge">${pct}%</span>
       </button>
     `;
-  }).join('');
+  };
+  // Only workspaces have boards; local projects are listed on the seat card for observability.
+  const ws = projects.filter(p => (p.kind || 'workspace') !== 'project');
+  dom.projectMenuList.innerHTML = ws.map(item).join('');
 }
 
 /**

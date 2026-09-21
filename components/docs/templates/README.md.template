@@ -6,10 +6,15 @@ This repository is the central source of truth for engineering architecture, CLI
 
 ---
 
-## Documentation Structure (3 Tiers)
+## Documentation Structure (4 Tiers)
 
 ```
 docs/
+├── product/                # Tier 0: Non-technical truth (users, requirements, user stories)
+│   ├── REQUIREMENTS.md     # Who the users are, what they need, must and must not
+│   ├── STORIES.md          # User stories with acceptance criteria, each pointing at its design doc
+│   └── INDEX.md
+│
 ├── system/                 # Tier 1: Living System Truth (Architecture & CLI Manuals)
 │   ├── ARCHITECTURE.md     # Master system architecture & technical blueprints
 │   ├── MANUAL.md           # CLI tools reference, commands & usage workflows

@@ -216,8 +216,13 @@ ${JSON.stringify(testProofs, null, 2)}
 CRITICAL: Return your final stamped verdict strictly in the required JSON structure.`;
 
     const parsed = invokeAgy({ model, prompt: fullPrompt });
+    // Valid JSON of the wrong shape (an array, {}, an error object, a stream envelope) is not a verdict.
+    // It must fail the step, never read as 'clean'.
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || (!Array.isArray(parsed.stamped_bugs) && typeof parsed.verdict !== 'string')) {
+      throw new Error(`judge reply is not a verdict: ${JSON.stringify(parsed).slice(0, 200)}`);
+    }
     return {
-      verdict: parsed.verdict || (testProofs.some(t => !t.passed) ? 'issues_detected' : 'clean'),
+      verdict: parsed.verdict || (testProofs.some(t => !t.passed && !t.isHarnessError) ? 'issues_detected' : 'clean'),
       judge: model,
       summary: parsed.summary || {
         total_reviewed: (wave1.findings?.length || 0) + (wave2.findings?.length || 0),

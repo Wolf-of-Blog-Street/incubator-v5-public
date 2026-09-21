@@ -46,12 +46,26 @@ export function renderProjects() {
   if (countChecked) countChecked.textContent = stats.checkedOutProjects;
   if (countUnassigned) countUnassigned.textContent = stats.unassignedProjects;
 
-  // 3. Filter and Search
-  const filter = state.projectsFilter || 'all';
+  // 3. Filter and Search. With a seat selected, default to that seat's own workspaces.
+  const seatId = state.activeAgentId || null;
+  if (!state.projectsFilter) state.projectsFilter = seatId ? 'seat' : 'all';
+  const filter = state.projectsFilter;
   const query = (state.projectsSearchQuery || '').toLowerCase().trim();
+  const byActiveSeat = p => !!seatId && (p.checkedOutBy || []).some(c => c.agentId === seatId);
+
+  const seatChip = document.querySelector('.proj-filter-chip[data-filter="seat"]');
+  if (seatChip) {
+    const seatName = (state.roster || []).find(a => a.id === seatId)?.name || seatId;
+    seatChip.style.display = seatId ? '' : 'none';
+    seatChip.querySelector('.chip-label').textContent = seatId ? `${seatName}` : 'This seat';
+    seatChip.querySelector('.badge').textContent = projects.filter(byActiveSeat).length;
+  }
+  document.querySelectorAll('.proj-filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter === filter));
 
   let filtered = projects;
-  if (filter === 'checked-out') {
+  if (filter === 'seat') {
+    filtered = filtered.filter(byActiveSeat);
+  } else if (filter === 'checked-out') {
     filtered = filtered.filter(p => p.isCheckedOut);
   } else if (filter === 'unassigned') {
     filtered = filtered.filter(p => !p.isCheckedOut);
@@ -73,7 +87,7 @@ export function renderProjects() {
     dom.projectsGrid.innerHTML = `
       <div class="projects-empty-state">
         <span class="empty-icon">📁</span>
-        <h3>${query ? 'No matching projects found' : (filter === 'all' ? 'No Projects Registered in Catalog' : `No ${filter === 'checked-out' ? 'Checked Out' : 'Unassigned'} Projects`)}</h3>
+        <h3>${query ? 'No matching workspaces found' : (filter === 'all' ? 'No workspaces in the catalog' : filter === 'seat' ? 'This seat has no GitHub-backed workspaces' : `No ${filter === 'checked-out' ? 'checked out' : 'unassigned'} workspaces`)}</h3>
         <p>${query ? 'Try a different search term or clear the filter.' : 'Add your first GitHub repository to track multi-seat checkout topology.'}</p>
         ${!query && filter === 'all' ? `<button type="button" class="btn btn-primary btn-sm" id="btn-empty-add-project">+ Add Project</button>` : ''}
       </div>

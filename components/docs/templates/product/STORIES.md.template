@@ -1,0 +1,11 @@
+# {{PROJECT_NAME}} — User Stories
+
+One story per outcome, in the user's words. Acceptance criteria are what the user can observe,
+never implementation. The Delivered by column names the design doc (`../design/<slug>.md`) that
+builds it, or is blank while the story waits.
+
+| ID | Story | Acceptance criteria | Delivered by | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| US-1 | As a <user>, I want <outcome> so that <reason>. | - <observable check> | | Open |
+
+Status: Open · In design · Delivered · Dropped.

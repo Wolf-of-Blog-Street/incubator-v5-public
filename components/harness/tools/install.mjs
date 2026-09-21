@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +79,9 @@ function resolveSources() {
       boardDir: path.join(devRoot, 'components/board'),
       sweeperDir: path.join(devRoot, 'components/sweeper'),
       friendsDir: path.join(devRoot, 'components/friends'),
-      harnessDir: path.join(devRoot, 'components/harness')
+      harnessDir: path.join(devRoot, 'components/harness'),
+      viewersDir: path.join(devRoot, 'components/viewers'),
+      skillsDirs: [path.join(devRoot, 'components/harness/skills'), path.join(devRoot, 'components/brain/skills')]
     };
   }
 
@@ -95,7 +98,9 @@ function resolveSources() {
     boardDir: path.join(harnessHome, 'components/board'),
     sweeperDir: path.join(harnessHome, 'components/sweeper'),
     friendsDir: path.join(harnessHome, 'components/friends'),
-    harnessDir: path.join(harnessHome, 'components/harness')
+    harnessDir: path.join(harnessHome, 'components/harness'),
+    viewersDir: path.join(harnessHome, 'components/viewers'),
+    skillsDirs: [path.join(harnessHome, 'components/harness/skills'), path.join(harnessHome, 'components/brain/skills')]
   };
 }
 
@@ -128,6 +133,53 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
     fs.copyFileSync(src, dest);
     if (options.mode) {
       try { fs.chmodSync(dest, options.mode); } catch {}
+    }
+  }
+
+  // No-clobber install (v5.7.7): harness/manifest.json remembers the hash of every file the
+  // installer shipped. A file a seat has edited since (hash differs from what was shipped) is
+  // kept; the new shipped version lands beside it as <file>.shipped and the manifest lists it.
+  const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+  const priorManifest = (() => { try { return JSON.parse(fs.readFileSync(path.join(harnessDir, 'manifest.json'), 'utf8')); } catch { return {}; } })();
+  const priorFiles = priorManifest.files && typeof priorManifest.files === 'object' ? priorManifest.files : {};
+  const shippedFiles = {};
+  const keptLocal = [];
+  function walk(dir, rel = '') {
+    const out = [];
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) out.push(...walk(path.join(dir, e.name), r));
+      else if (e.isFile()) out.push(r);
+    }
+    return out;
+  }
+  function guardedCopyDir(src, dest, key) {
+    if (!fs.existsSync(src)) return;
+    const resolvedSrc = path.resolve(src);
+    const resolvedDest = path.resolve(dest);
+    if (resolvedSrc === resolvedDest || resolvedDest.startsWith(resolvedSrc + path.sep)) return;
+    try { if (fs.lstatSync(resolvedDest).isSymbolicLink()) fs.unlinkSync(resolvedDest); } catch {}
+    for (const rel of walk(resolvedSrc)) {
+      const from = path.join(resolvedSrc, rel);
+      const to = path.join(resolvedDest, rel);
+      const manifestKey = `${key}/${rel}`;
+      const srcHash = sha(from);
+      shippedFiles[manifestKey] = srcHash;
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      if (fs.existsSync(to)) {
+        const localHash = sha(to);
+        const recorded = priorFiles[manifestKey];
+        if (recorded && localHash !== recorded && localHash !== srcHash) {
+          // Locally modified since it was shipped: keep it, put the new version beside it.
+          fs.copyFileSync(from, `${to}.shipped`);
+          keptLocal.push(manifestKey);
+          continue;
+        }
+      }
+      fs.copyFileSync(from, to);
+      const stale = `${to}.shipped`;
+      if (fs.existsSync(stale)) fs.unlinkSync(stale);
     }
   }
 
@@ -170,18 +222,70 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
   const harnessComponentsDir = path.join(harnessDir, 'components');
   fs.mkdirSync(harnessComponentsDir, { recursive: true });
 
-  safeCopyDir(sources.docsDir, path.join(harnessComponentsDir, 'docs'));
-  safeCopyDir(sources.brainDir, path.join(harnessComponentsDir, 'brain'));
-  safeCopyDir(sources.boardDir, path.join(harnessComponentsDir, 'board'));
-  safeCopyDir(sources.sweeperDir, path.join(harnessComponentsDir, 'sweeper'));
-  safeCopyDir(sources.friendsDir, path.join(harnessComponentsDir, 'friends'));
-  safeCopyDir(sources.harnessDir, path.join(harnessComponentsDir, 'harness'));
+  guardedCopyDir(sources.docsDir, path.join(harnessComponentsDir, 'docs'), 'components/docs');
+  guardedCopyDir(sources.brainDir, path.join(harnessComponentsDir, 'brain'), 'components/brain');
+  guardedCopyDir(sources.boardDir, path.join(harnessComponentsDir, 'board'), 'components/board');
+  guardedCopyDir(sources.sweeperDir, path.join(harnessComponentsDir, 'sweeper'), 'components/sweeper');
+  guardedCopyDir(sources.friendsDir, path.join(harnessComponentsDir, 'friends'), 'components/friends');
+  guardedCopyDir(sources.harnessDir, path.join(harnessComponentsDir, 'harness'), 'components/harness');
+  guardedCopyDir(sources.viewersDir, path.join(harnessComponentsDir, 'viewers'), 'components/viewers');
+  // The viewers skill calls harness/tools/viewers/render.mjs; ship the renderer there too.
+  guardedCopyDir(sources.viewersDir, path.join(harnessDir, 'tools', 'viewers'), 'tools/viewers');
+  if (keptLocal.length) {
+    console.warn(`⚠ kept ${keptLocal.length} locally modified file(s); the shipped version sits beside each as .shipped:`);
+    for (const k of keptLocal) console.warn(`   harness/${k}`);
+  }
+
+  // 4b. Install default skills into every CLI's project skill dir.
+  // .claude/skills is read by Claude Code; .agents/skills is the shared convention read by Codex, OpenCode and agy.
+  // Harness-shipped skills are always overwritten; skills the seat added itself are left alone.
+  const skillTargets = ['.claude/skills', '.agents/skills'];
+  const installedSkills = [];
+  for (const skillsSrc of (sources.skillsDirs || [])) {
+    if (!fs.existsSync(skillsSrc)) continue;
+    for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !fs.existsSync(path.join(skillsSrc, entry.name, 'SKILL.md'))) continue;
+      for (const target of skillTargets) {
+        safeCopyDir(path.join(skillsSrc, entry.name), path.join(resolvedHome, target, entry.name));
+      }
+      installedSkills.push(entry.name);
+      // A skill may ship data: <skill>/voice-pack/*.md lands in <seat>/data/opus-writer/voice-pack/
+      const packSrc = path.join(skillsSrc, entry.name, 'voice-pack');
+      if (fs.existsSync(packSrc)) {
+        const packDest = path.join(resolvedHome, 'data/opus-writer/voice-pack');
+        fs.mkdirSync(packDest, { recursive: true });
+        for (const f of fs.readdirSync(packSrc)) {
+          if (f.endsWith('.md')) safeCopyFile(path.join(packSrc, f), path.join(packDest, f));
+        }
+      }
+    }
+  }
 
   // 5. Initialize brain store if not already present (Task #53: check __source instead of parent)
   const brainDir = path.join(resolvedHome, 'brain');
   const brainSourceDir = path.join(brainDir, '__source');
   if (!fs.existsSync(brainSourceDir)) {
     fs.mkdirSync(brainSourceDir, { recursive: true });
+  }
+  // Every seat has a default working-memory card: it serves when no context is loaded, so an
+  // agent is never forced to load one. Seeded once, never overwritten; Opus rewrites it later.
+  const defaultWm = path.join(brainSourceDir, 'working-memory.md');
+  if (!fs.existsSync(defaultWm)) {
+    const today = new Date().toISOString().slice(0, 10);
+    fs.writeFileSync(defaultWm, [
+      '---',
+      'entity: note',
+      'description: Default working memory (serves when no context is loaded)',
+      `date_created: ${today}`,
+      '---',
+      '## State of play',
+      'Nothing recorded yet. This card serves when no context is loaded.',
+      '',
+      '## Next actions',
+      '1. Read the seat\'s roster notes: node harness/components/board/tools/fleet.mjs notes <seat>',
+      '2. When a duty is clear, mint a context for it with the context-load skill; otherwise work here.',
+      ''
+    ].join('\n'), 'utf8');
   }
 
   // 6. Ensure boards directory exists
@@ -216,6 +320,25 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
         fs.writeFileSync(cardPath, cardContent, 'utf8');
       }
     }
+  }
+
+  // 8b. SessionStart hook: merge into <seat>/.claude/settings.json, keep every other key.
+  // Idempotent: the hook is recognised by its command string; a seat's own hooks stay.
+  {
+    const settingsPath = path.join(resolvedHome, '.claude', 'settings.json');
+    let settings = {};
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch {}
+    if (!settings || typeof settings !== 'object') settings = {};
+    const hookCmd = 'node harness/components/brain/tools/session-start.mjs';
+    settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
+    const list = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
+    const already = list.some(entry => (entry.hooks || []).some(h => h.command === hookCmd));
+    if (!already) {
+      list.push({ matcher: 'startup|resume|clear', hooks: [{ type: 'command', command: hookCmd, timeout: 60 }] });
+      settings.hooks.SessionStart = list;
+    }
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
   }
 
   // 9. Optionally write harness/falcon.env with 0600 mode (Task #51)
@@ -257,7 +380,10 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
     harness_version: harnessVersion,
     source_revision: sourceRevision,
     installed_at: new Date().toISOString(),
-    seat: seatId
+    seat: seatId,
+    skills: installedSkills,
+    files: shippedFiles,
+    kept_local: keptLocal
   };
 
   const manifestPath = path.join(harnessDir, 'manifest.json');

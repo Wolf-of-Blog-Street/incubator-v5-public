@@ -284,7 +284,7 @@ export const state = {
   activeDocsCatalogSubFilter: 'all',
   projectsCatalog: [],
   projectsStats: null,
-  projectsFilter: 'all',
+  projectsFilter: null,
   projectsSearchQuery: ''
 };
 

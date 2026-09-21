@@ -33,6 +33,20 @@ export function validateProjectId(id) {
   }
 }
 
+/** Contexts a seat reports from its brain: slug, name, mission, and whether it is loaded. */
+function sanitizeContexts(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter(c => c && typeof c === 'object' && typeof c.slug === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_\-]*$/.test(c.slug))
+    .slice(0, 100)
+    .map(c => ({
+      slug: c.slug,
+      name: c.name ? String(c.name).slice(0, 80) : c.slug,
+      mission: c.mission ? String(c.mission).slice(0, 240) : '',
+      active: Boolean(c.active)
+    }));
+}
+
 function getDefaultConfig() {
   return {
     default_agent: 'manager-pm',
@@ -83,13 +97,16 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
       projects = agent.projects.map(p => {
         const pId = p.id || 'default';
         validateProjectId(pId);
-        const pDbFilename = p.board ? path.basename(p.board) : `${agent.id}.${pId}.sqlite`;
+        const isLocal = p.kind === 'project';
+        const pDbFilename = isLocal ? null : (p.board ? path.basename(p.board) : `${agent.id}.${pId}.sqlite`);
         return {
           id: pId,
           name: p.name || pId,
           board: pDbFilename,
-          dbPath: path.resolve(boardsDir, pDbFilename),
-          docs_path: p.docs_path || null
+          dbPath: pDbFilename ? path.resolve(boardsDir, pDbFilename) : null,
+          docs_path: p.docs_path || null,
+          kind: isLocal ? 'project' : 'workspace',
+          remote: p.remote || null
         };
       });
     } else {
@@ -108,6 +125,8 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
       icon: agent.icon || '🤖',
       color: agent.color || 'blue',
       tags: Array.isArray(agent.tags) ? agent.tags : [],
+      notes: agent.notes ? String(agent.notes) : '',
+      contexts: sanitizeContexts(agent.contexts),
       token: agent.token || null,
       token_hash: agent.token_hash || (agent.token ? hashToken(agent.token) : null),
       harness_version: agent.harness_version || null,
@@ -158,8 +177,10 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
             icon: a.icon,
             color: a.color,
             tags: a.tags,
+            notes: a.notes || '',
+            contexts: a.contexts || [],
             token_hash: a.token_hash || (a.token ? hashToken(a.token) : null),
-            projects: a.projects.map(p => ({ id: p.id, name: p.name, board: p.board, docs_path: p.docs_path }))
+            projects: a.projects.map(p => ({ id: p.id, name: p.name, board: p.board, docs_path: p.docs_path, kind: p.kind || 'workspace', remote: p.remote || null }))
           };
           if (a.harness_version) {
             entry.harness_version = a.harness_version;
@@ -216,6 +237,8 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
       if (updates.icon !== undefined) agent.icon = String(updates.icon);
       if (updates.color !== undefined) agent.color = String(updates.color);
       if (updates.tags !== undefined && Array.isArray(updates.tags)) agent.tags = updates.tags;
+      if (updates.notes !== undefined) agent.notes = updates.notes === null ? '' : String(updates.notes);
+      if (updates.contexts !== undefined) agent.contexts = sanitizeContexts(updates.contexts);
       if (updates.harness_version !== undefined) {
         agent.harness_version = updates.harness_version === null ? null : String(updates.harness_version);
       }
@@ -227,7 +250,7 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
       validateAgentId(agentId);
       const agent = agentsMap.get(agentId);
       if (!agent) throw new AgentNotFoundError(agentId);
-      return agent.projects.map(p => ({ id: p.id, name: p.name, board: p.board, docs_path: p.docs_path }));
+      return agent.projects.map(p => ({ id: p.id, name: p.name, board: p.board, docs_path: p.docs_path, kind: p.kind || 'workspace', remote: p.remote || null }));
     },
     registerAgent(agentConfig, optionsOrAutoGenerate = {}) {
       const opts = typeof optionsOrAutoGenerate === 'boolean'
@@ -300,13 +323,16 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
 
       const pId = projectDef.id;
       validateProjectId(pId);
-      const pDbFilename = projectDef.board ? path.basename(projectDef.board) : `${agent.id}.${pId}.sqlite`;
+      const isLocal = projectDef.kind === 'project';
+      const pDbFilename = isLocal ? null : (projectDef.board ? path.basename(projectDef.board) : `${agent.id}.${pId}.sqlite`);
       const projectRecord = {
         id: pId,
         name: projectDef.name || pId,
         board: pDbFilename,
-        dbPath: path.resolve(boardsDir, pDbFilename),
-        docs_path: projectDef.docs_path || 'docs/design'
+        dbPath: pDbFilename ? path.resolve(boardsDir, pDbFilename) : null,
+        docs_path: projectDef.docs_path || 'docs/design',
+        kind: isLocal ? 'project' : 'workspace',
+        remote: projectDef.remote || null
       };
 
       const existingIndex = agent.projects.findIndex(p => p.id === pId);
@@ -319,6 +345,19 @@ export function createAgentStore(options = {}, legacyBoardsDir) {
       if (typeof onAllocateCallback === 'function') onAllocateCallback(agentId, pId);
       persist();
       return { ...projectRecord };
+    },
+    removeProject(agentId, projectId, onRemoveCallback) {
+      validateAgentId(agentId);
+      validateProjectId(projectId);
+      const agent = agentsMap.get(agentId);
+      if (!agent) throw new AgentNotFoundError(agentId);
+      const idx = agent.projects.findIndex(p => p.id === projectId);
+      if (idx < 0) throw new ProjectNotFoundError(agentId, projectId);
+      if (agent.projects.length === 1) throw new Error(`"${projectId}" is the only project on ${agentId}; a seat keeps at least one`);
+      const [removed] = agent.projects.splice(idx, 1);
+      if (typeof onRemoveCallback === 'function') onRemoveCallback(agentId, projectId);
+      persist();
+      return { id: removed.id, name: removed.name, board: removed.board, kind: removed.kind };
     },
     persist
   };

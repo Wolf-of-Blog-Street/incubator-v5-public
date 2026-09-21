@@ -143,6 +143,11 @@ export function openRoster(options = {}) {
       return agentStore.allocateProject(agentId, projectDef, (agId, prId) => boardFactory.evictBoard(agId, prId));
     },
 
+    /** Drops a project from a seat's roster entry. The board file, if any, is left on disk. */
+    removeProject(agentId, projectId) {
+      return agentStore.removeProject(agentId, projectId, (agId, prId) => boardFactory.evictBoard(agId, prId));
+    },
+
     /**
      * Retrieves an active SQLite board instance for an agent and project.
      * @param {string} agentId

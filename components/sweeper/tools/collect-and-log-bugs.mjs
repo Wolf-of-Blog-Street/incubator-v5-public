@@ -21,46 +21,58 @@ const COMPONENT_DESIGN_SLUGS = {
 /**
  * Finds the latest run directory in .runs matching a specific target component.
  */
-function findLatestRunForTarget(target) {
-  const runsDir = path.join(WORKSPACE_ROOT, '.runs');
+export function findLatestRunForTarget(target, runsDir = path.join(WORKSPACE_ROOT, '.runs')) {
   if (!fs.existsSync(runsDir)) return null;
-
-  const entries = fs.readdirSync(runsDir)
-    .map(name => {
-      const fullPath = path.join(runsDir, name);
-      const stat = fs.statSync(fullPath);
-      return { name, path: fullPath, mtimeMs: stat.mtimeMs };
-    })
+  // Runs live in .runs/<run> and, for sweep after sweep, in .runs/sweeps/<target-slug>/<run>.
+  const dirs = d => fs.existsSync(d) ? fs.readdirSync(d).map(n => path.join(d, n)).filter(f => fs.statSync(f).isDirectory()) : [];
+  const runs = [...dirs(runsDir), ...dirs(path.join(runsDir, 'sweeps')).flatMap(dirs)]
+    .map(f => ({ path: f, mtimeMs: fs.statSync(f).mtimeMs }))
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
-
-  for (const entry of entries) {
-    const summaryPath = path.join(entry.path, 'deep-summary.md');
-    const baselinePath = path.join(entry.path, 'baseline', 'summary.md');
-    if (fs.existsSync(summaryPath)) {
-      const content = fs.readFileSync(summaryPath, 'utf8');
-      if (content.includes(`Target: \`${target}\``) || content.includes(`Target**: \`${target}\``)) {
-        return entry.path;
-      }
-    } else if (fs.existsSync(baselinePath)) {
-      const content = fs.readFileSync(baselinePath, 'utf8');
-      if (content.includes(`Target: \`${target}\``) || content.includes(`Target**: \`${target}\``)) {
-        return entry.path;
-      }
+  // A sweep of a file or folder inside the component counts, and so does a target given with a longer prefix.
+  const hits = t => typeof t === 'string' && (t === target || t.endsWith(`/${target}`) || t.includes(`${target}/`));
+  for (const run of runs) {
+    for (const name of ['deep-summary.json', 'summary.json']) {
+      const file = path.join(run.path, name);
+      if (!fs.existsSync(file)) continue;
+      try { if (hits(JSON.parse(fs.readFileSync(file, 'utf8')).target)) return run.path; } catch { /* unreadable run: skip it */ }
     }
   }
-
   return null;
 }
 
 /**
  * Extracts bugs from a sweep run directory.
  */
-function extractBugsFromRun(runDir, componentTarget) {
+export function extractBugsFromRun(runDir, componentTarget) {
   const bugs = [];
   if (!runDir || !fs.existsSync(runDir)) return bugs;
 
-  // 1. Check deep/astra_result.txt
-  const astraResultFile = path.join(runDir, 'deep', 'astra_result.txt');
+  // A run with a judge verdict: only what the judge stamped goes to the board, from every model.
+  // Raw model candidates are never logged. The text scraping below is for runs older than the JSON verdict.
+  for (const name of ['deep-summary.json', 'summary.json']) {
+    const file = path.join(runDir, name);
+    if (!fs.existsSync(file)) continue;
+    let judge = null;
+    try { judge = JSON.parse(fs.readFileSync(file, 'utf8')).judge; } catch { /* unreadable: try the next source */ }
+    if (!judge) continue;
+    // The judge failed: nothing from this run is verified, so nothing goes to the board. No fall back to raw candidates.
+    if (judge.judge_error || !Array.isArray(judge.stamped_bugs)) { console.log(`  ⚠️ ${path.basename(runDir)}: unjudged run, no bugs logged`); return []; }
+    return judge.stamped_bugs.map(b => ({
+      source: name === 'deep-summary.json' ? 'deep-judge' : 'gemini-judge',
+      id: b.id,
+      severity: b.severity || 'HIGH',
+      category: b.category || 'invariant',
+      title: b.title,
+      file: b.file || componentTarget,
+      root_cause: b.root_cause || b.real_world_impact || '',
+      failure_scenario: b.failure_scenario || '',
+      recommended_fix: b.recommended_fix || b.suggested_fix || '',
+      test_code: null
+    }));
+  }
+
+  // 1. Astra findings: the deep sweep writes them to astra/ (older runs used deep/).
+  const astraResultFile = [path.join(runDir, 'astra', 'astra_result.txt'), path.join(runDir, 'deep', 'astra_result.txt')].find(f => fs.existsSync(f)) || '';
   if (fs.existsSync(astraResultFile)) {
     const raw = fs.readFileSync(astraResultFile, 'utf8');
     const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || [null, raw];

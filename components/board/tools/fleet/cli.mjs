@@ -129,8 +129,13 @@ Commands:
   remove <agent-id>             Decommission/revoke an agent seat
   token <agent-id> --rotate     Rotate agent Bearer token
   project add <agent-id> <id>   Allocate a new workspace project to an agent
+  project rm <agent-id> <id>    Drop a workspace or project from an agent's roster entry (board file kept)
   project-catalog [subcommand]  Manage GitHub project catalog & view seat inventory (list, add, rm, scan)
   verify <agent-id>             Verify connectivity and database integrity for an agent
+  notes <agent-id> [text]       Show or set the free-text notes for an agent seat (empty text clears)
+  (seat-side)                   node harness/components/board/tools/sync-workspaces.mjs [--dry-run] reports a seat's
+                                workspaces/, projects/ and brain contexts to its roster entry; the SessionStart hook
+                                and the hourly fleet sync run it for you
 
 Options:
   --target <path>               Target directory for provisioning an agent seat

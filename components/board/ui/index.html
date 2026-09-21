@@ -44,12 +44,12 @@
 
       <!-- Project Switcher Dropdown (Workspace Projects) -->
       <div class="project-switcher-dropdown" id="project-switcher-dropdown">
-        <button type="button" class="project-switcher-btn" id="project-switcher-btn" aria-haspopup="true" aria-expanded="false" title="Switch Workspace Project">
+        <button type="button" class="project-switcher-btn" id="project-switcher-btn" aria-haspopup="true" aria-expanded="false" title="Switch workspace or project">
           <span class="project-btn-name" id="active-project-name">incubator-v5</span>
           <span class="project-switcher-chevron">▾</span>
         </button>
         <div class="project-dropdown-menu" id="project-dropdown-menu" role="menu" style="display: none;">
-          <div class="project-menu-header">Projects</div>
+          <div class="project-menu-header">Workspaces</div>
           <div id="project-menu-list" class="project-menu-list">
             <!-- Dynamic list of projects for active agent -->
           </div>
@@ -66,7 +66,7 @@
       <!-- View Switcher -->
       <div class="view-toggle">
         <button id="view-fleet-btn" class="toggle-btn" title="Fleet (key 0)">Fleet</button>
-        <button id="view-projects-btn" class="toggle-btn" title="Projects (key 1)">Projects</button>
+        <button id="view-projects-btn" class="toggle-btn" title="Workspaces (key 1)">Workspaces</button>
         <button id="view-kanban-btn" class="toggle-btn" title="Board (key 2)">Board</button>
         <button id="view-swimlanes-btn" class="toggle-btn active" title="Lanes, one per design doc (key 3)">Lanes</button>
         <button id="view-docs-btn" class="toggle-btn" title="Docs (key 4)">Docs</button>
@@ -151,16 +151,16 @@
         <div class="projects-title-area">
           <div class="projects-view-badge">
             <span class="projects-view-icon">📁</span>
-            <span class="projects-view-label">PROJECTS CATALOG</span>
+            <span class="projects-view-label">WORKSPACES</span>
           </div>
-          <span class="projects-subtext">GitHub repository registry and live fleet checkout inventory</span>
+          <span class="projects-subtext">Every GitHub-backed workspace across the fleet and which seat has it checked out. Local-only folders are projects; they live on the seat cards.</span>
         </div>
         <div class="projects-header-actions">
           <button type="button" id="btn-refresh-projects-scan" class="btn btn-secondary btn-sm" title="Force re-scan fleet agent workspaces">
             <span class="refresh-icon">↻</span> Scan Workspaces
           </button>
-          <button type="button" id="btn-add-project" class="btn btn-primary btn-sm" title="Register a new GitHub repository">
-            <span>+</span> Add Project
+          <button type="button" id="btn-add-project" class="btn btn-primary btn-sm" title="Register a new GitHub-backed workspace">
+            <span>+</span> Add Workspace
           </button>
         </div>
       </div>
@@ -172,9 +172,10 @@
       <div class="projects-toolbar">
         <div class="projects-search-box">
           <span class="search-icon">⌕</span>
-          <input type="text" id="projects-search-input" placeholder="Filter projects by name, URL, or tag..." autocomplete="off" spellcheck="false">
+          <input type="text" id="projects-search-input" placeholder="Filter workspaces by name, URL, or tag..." autocomplete="off" spellcheck="false">
         </div>
         <div class="projects-filter-chips" id="projects-filter-chips">
+          <button type="button" class="proj-filter-chip" data-filter="seat" title="Workspaces checked out by the selected seat"><span class="chip-label">This seat</span> <span class="badge">0</span></button>
           <button type="button" class="proj-filter-chip active" data-filter="all">All <span class="badge" id="count-proj-all">0</span></button>
           <button type="button" class="proj-filter-chip" data-filter="checked-out">Checked Out <span class="badge" id="count-proj-checked">0</span></button>
           <button type="button" class="proj-filter-chip" data-filter="unassigned">Unassigned <span class="badge" id="count-proj-unassigned">0</span></button>

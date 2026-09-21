@@ -22,7 +22,7 @@ import {
 export function bindClickDelegation(fetchData, render) {
   document.addEventListener('click', (e) => {
     // 1. Fleet Project Pill
-    const projPill = e.target.closest('.fleet-proj-pill');
+    const projPill = e.target.closest('.inv-ws');
     if (projPill && projPill.dataset.agentId && projPill.dataset.projectId) {
       e.stopPropagation();
       state.activeAgentId = projPill.dataset.agentId;

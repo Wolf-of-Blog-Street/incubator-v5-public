@@ -109,10 +109,15 @@ export function resolveScope(targets, baseDir = process.cwd(), extensions = ['.m
  */
 export function executeAdversarialTest(testFilePath) {
   const start = Date.now();
-  const childEnv = { ...process.env, NODE_ENV: 'test' };
-  for (const k of Object.keys(childEnv)) {
-    if (k.startsWith('NODE_TEST_')) delete childEnv[k];
-  }
+  // A generated test is code nobody has read. It gets a scratch HOME and a short allowlist of
+  // variables, never the operator's environment: no tokens, no real stores, and on macOS no login
+  // Keychain (it is found through HOME). SWEEPER_TEST_ENV names extra variables to pass, comma separated.
+  // ponytail: env isolation only. The test can still write any path it names; run in a container if a target needs more.
+  const home = path.join(path.dirname(testFilePath), '.home');
+  fs.mkdirSync(home, { recursive: true });
+  const pass = ['PATH', 'LANG', 'TMPDIR', ...(process.env.SWEEPER_TEST_ENV || '').split(',').map(k => k.trim()).filter(Boolean)];
+  const childEnv = { NODE_ENV: 'test', HOME: home, USERPROFILE: home };
+  for (const k of pass) if (process.env[k] !== undefined) childEnv[k] = process.env[k];
 
   const res = spawnSync(process.execPath, [testFilePath], {
     encoding: 'utf8',
@@ -154,17 +159,26 @@ export function runAdversarialTestSuite(tests, outputDir) {
 
   for (let i = 0; i < tests.length; i++) {
     const t = tests[i];
-    const safeName = (t.test_name || `test_${i}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeName = String(t?.test_name || `test_${i}`).replace(/[^a-zA-Z0-9_-]/g, '_');
     const testFile = path.join(testsDir, `${safeName}.test.mjs`);
 
-    fs.writeFileSync(testFile, t.code, 'utf8');
-    const execResult = executeAdversarialTest(testFile);
+    // The test entry is model text. A wrong key or a missing body is a harness error for that test, never the end of the sweep.
+    const code = t && (typeof t.code === 'string' ? t.code : typeof t.test_code === 'string' ? t.test_code : null);
+    let execResult;
+    try {
+      if (!code) throw new Error('test entry has no code');
+      fs.writeFileSync(testFile, code, 'utf8');
+      execResult = executeAdversarialTest(testFile);
+    } catch (err) {
+      execResult = { passed: false, isHarnessError: true, exitCode: null, duration_ms: 0, stdout: '', stderr: String(err.message || err) };
+    }
 
     results.push({
-      test_name: t.test_name,
-      target_finding_id: t.target_finding_id || null,
+      test_name: t?.test_name || safeName,
+      target_finding_id: t?.target_finding_id || null,
       test_file: testFile,
       passed: execResult.passed,
+      isHarnessError: !!execResult.isHarnessError, // a broken test is not proof of a bug
       exitCode: execResult.exitCode,
       duration_ms: execResult.duration_ms,
       stdout: execResult.stdout,
@@ -186,6 +200,7 @@ export function formatSummaryMarkdown({ sweepId, target, scopeFiles, wave1, wave
   lines.push(`- **Audited Files**: ${scopeFiles.length} file(s)`);
   lines.push(`- **User Stories Source**: \`${specSource}\` (${stories.length} story/stories evaluated)`);
   lines.push(`- **Verdict**: **${(judgeVerdict.verdict || 'UNKNOWN').toUpperCase()}**`);
+  for (const f of judgeVerdict.failed_steps || []) lines.push(`- ⚠️ **${f.step} FAILED, this sweep is incomplete**: ${f.error.split('\n')[0]}`);
   lines.push(`- **Judge**: \`${judgeVerdict.judge || DEFAULT_MODELS.judge}\``);
   lines.push('');
   lines.push('---');
@@ -308,40 +323,48 @@ export async function runSweep({
   const wave3Prompt = fs.readFileSync(path.join(promptsDir, wave3PromptFile), 'utf8');
   const judgePrompt = fs.readFileSync(path.join(promptsDir, 'judge-gavel.md'), 'utf8');
 
+  // A model step that fails (bad JSON after the retries, a CLI error) must not end the sweep, and
+  // must not look like a clean result: the step keeps its empty default, and the report says so.
+  const failedSteps = [];
+  const step = async (name, fallback, run) => {
+    try { return await run(); }
+    catch (err) { failedSteps.push({ step: name, error: String(err.message || err).slice(0, 500) }); console.log(`  ⚠️ ${name} failed: ${String(err.message || err).split('\n')[0]}`); return fallback; }
+  };
+
   // Step 1: Execute Wave 1 (Story-to-Code Mental Walkthrough)
   let wave1Result = { wave: 1, hunter: DEFAULT_MODELS.wave1, findings: [] };
   if (llmDriver) {
-    wave1Result = await llmDriver.executeWave1({
+    wave1Result = await step('Wave 1', wave1Result, () => llmDriver.executeWave1({
       scopeFiles,
       prompt: wave1Prompt,
       storiesContext,
       model: DEFAULT_MODELS.wave1
-    });
+    }));
   }
 
   // Step 2: Execute Wave 2 (Operational Reality & Silent Degradation)
   let wave2Result = { wave: 2, hunter: DEFAULT_MODELS.wave2, findings: [] };
   if (llmDriver) {
-    wave2Result = await llmDriver.executeWave2({
+    wave2Result = await step('Wave 2', wave2Result, () => llmDriver.executeWave2({
       scopeFiles,
       wave1: wave1Result,
       prompt: wave2Prompt,
       storiesContext,
       model: DEFAULT_MODELS.wave2
-    });
+    }));
   }
 
   // Step 3: Execute Wave 3 (Real Story Reproduction Tests)
   let wave3Result = { wave: 3, role: 'story-reproduction-engineer', tests: [] };
   if (llmDriver) {
-    wave3Result = await llmDriver.executeWave3({
+    wave3Result = await step('Wave 3', wave3Result, () => llmDriver.executeWave3({
       scopeFiles,
       wave1: wave1Result,
       wave2: wave2Result,
       prompt: wave3Prompt,
       storiesContext,
       model: DEFAULT_MODELS.wave3
-    });
+    }));
   }
 
   // Step 4: Run the generated tests dynamically
@@ -349,7 +372,7 @@ export async function runSweep({
 
   // Step 5: Execute Judge (Real-Use Gavel)
   let judgeVerdict = {
-    verdict: testProofs.some(t => !t.passed) ? 'issues_detected' : 'clean',
+    verdict: testProofs.some(t => !t.passed && !t.isHarnessError) ? 'issues_detected' : 'clean',
     judge: DEFAULT_MODELS.judge,
     summary: {
       total_reviewed: (wave1Result.findings?.length || 0) + (wave2Result.findings?.length || 0),
@@ -361,7 +384,7 @@ export async function runSweep({
   };
 
   if (llmDriver) {
-    judgeVerdict = await llmDriver.executeJudge({
+    judgeVerdict = await step('Judge', judgeVerdict, () => llmDriver.executeJudge({
       scopeFiles,
       wave1: wave1Result,
       wave2: wave2Result,
@@ -369,8 +392,10 @@ export async function runSweep({
       prompt: judgePrompt,
       storiesContext,
       model: DEFAULT_MODELS.judge
-    });
+    }));
   }
+
+  if (failedSteps.length) { judgeVerdict.verdict = 'incomplete'; judgeVerdict.failed_steps = failedSteps; }
 
   // Step 6: Generate Summary Report
   const summaryMd = formatSummaryMarkdown({

@@ -58,17 +58,35 @@ export function renderFleet() {
       <span class="fleet-tag-chip">#${escapeHtml(tag)}</span>
     `).join('');
 
-    const projectsHtml = (agent.projects || []).map(p => {
-      const pStats = p.stats || {};
-      const pct = pStats.progressPct ?? 0;
+    const all = agent.projects || [];
+    const wsRows = all.filter(p => (p.kind || 'workspace') !== 'project').map(p => {
+      const pct = (p.stats || {}).progressPct ?? 0;
       return `
-        <button type="button" class="fleet-proj-pill" data-agent-id="${escapeHtml(agent.id)}" data-project-id="${escapeHtml(p.id)}" title="Open ${escapeHtml(p.name || p.id)} Project Board">
-          <span class="proj-icon">📁</span>
-          <span class="proj-name">${escapeHtml(p.name || p.id)}</span>
-          <span class="proj-pct">${pct}%</span>
-        </button>
-      `;
+        <button type="button" class="inv-row inv-ws" data-agent-id="${escapeHtml(agent.id)}" data-project-id="${escapeHtml(p.id)}" title="Open board${p.remote ? ' · ' + escapeHtml(p.remote) : ''}">
+          <span class="inv-name">${escapeHtml(p.name || p.id)}</span>
+          <span class="inv-meta">${p.remote ? '<span class="inv-dot" title="GitHub"></span>' : ''}<span class="inv-pct">${pct}%</span></span>
+        </button>`;
     }).join('');
+    const prjRows = all.filter(p => p.kind === 'project').map(p => `
+        <span class="inv-row inv-prj" title="${escapeHtml(p.name || p.id)} · local, no board">
+          <span class="inv-name">${escapeHtml(p.name || p.id)}</span>
+        </span>`).join('');
+    const ctxRows = (agent.contexts || []).map(c => `
+        <span class="inv-row inv-ctx ${c.active ? 'is-active' : ''}" title="${escapeHtml(c.mission || c.name)}">
+          <span class="inv-name">${escapeHtml(c.name || c.slug)}</span>
+          ${c.active ? '<span class="inv-meta"><span class="inv-live">loaded</span></span>' : ''}
+        </span>`).join('');
+    const group = (label, rows, cls) => rows ? `
+          <div class="inv-group ${cls}">
+            <span class="inv-label">${label}</span>
+            <div class="inv-rows">${rows}</div>
+          </div>` : '';
+    const inventoryHtml = (wsRows || prjRows || ctxRows) ? `
+        <div class="fleet-inventory">
+          ${group('Workspaces', wsRows, 'inv-g-ws')}
+          ${group('Projects', prjRows, 'inv-g-prj')}
+          ${group('Contexts', ctxRows, 'inv-g-ctx')}
+        </div>` : '';
 
     return `
       <div class="fleet-agent-card" data-agent-id="${escapeHtml(agent.id)}">
@@ -85,12 +103,7 @@ export function renderFleet() {
 
         ${tagsHtml ? `<div class="fleet-tags-wrap">${tagsHtml}</div>` : ''}
 
-        ${projectsHtml ? `
-          <div class="fleet-projects-section">
-            <span class="fleet-projects-label">WORKSPACE PROJECTS</span>
-            <div class="fleet-projects-wrap">${projectsHtml}</div>
-          </div>
-        ` : ''}
+        ${inventoryHtml}
 
         <div class="fleet-milestone-box">
           <div class="fleet-milestone-header">

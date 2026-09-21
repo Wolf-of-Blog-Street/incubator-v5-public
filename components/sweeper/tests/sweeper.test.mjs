@@ -30,6 +30,15 @@ test('resolveScope finds files recursively and respects ignore lists', () => {
   }
 });
 
+test('a generated test never sees the operator environment', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-env-'));
+  const f = path.join(dir, 'env.test.mjs');
+  fs.writeFileSync(f, "import assert from 'node:assert';\nassert.equal(process.env.SWEEPER_SECRET_PROBE, undefined);\nassert.notEqual(process.env.HOME, " + JSON.stringify(os.homedir()) + ");\nassert.equal(process.env.SWEEPER_ALLOWED, 'yes');\n");
+  process.env.SWEEPER_SECRET_PROBE = 'token'; process.env.SWEEPER_ALLOWED = 'yes'; process.env.SWEEPER_TEST_ENV = 'SWEEPER_ALLOWED';
+  try { const r = executeAdversarialTest(f); assert.equal(r.passed, true, r.stderr); }
+  finally { delete process.env.SWEEPER_SECRET_PROBE; delete process.env.SWEEPER_ALLOWED; delete process.env.SWEEPER_TEST_ENV; fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('executeAdversarialTest runs a test script and captures pass/fail status', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-exec-test-'));
   try {
@@ -160,4 +169,56 @@ test('runSweep runs the complete 3-wave pipeline and synthesizes reports', async
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('a model step that fails does not end the sweep and never reads as clean', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-failed-step-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'a.mjs'), 'export const a = 1;');
+    const ok = { findings: [], tests: [], stamped_bugs: [], discarded_findings: [], verdict: 'clean', summary: {} };
+    const res = await runSweep({
+      target: tmpDir, baseDir: tmpDir, runDir: path.join(tmpDir, 'run'),
+      llmDriver: { executeWave1: async () => ok, executeWave2: async () => { throw new Error('Failed to parse JSON response'); }, executeWave3: async () => ok, executeJudge: async () => ({ ...ok }) }
+    });
+    assert.equal(res.judgeVerdict.verdict, 'incomplete');
+    assert.match(res.summaryMd, /Wave 2 FAILED, this sweep is incomplete/);
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+});
+
+test('the bug collector logs what the judge stamped, never raw model candidates', async () => {
+  const { extractBugsFromRun } = await import('../tools/collect-and-log-bugs.mjs');
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-collect-'));
+  try {
+    fs.mkdirSync(path.join(run, 'astra'));
+    fs.writeFileSync(path.join(run, 'astra', 'astra_result.txt'), JSON.stringify({ findings: [{ id: 'ASTRA-01', title: 'raw one' }, { id: 'ASTRA-02', title: 'raw two' }] }));
+    fs.writeFileSync(path.join(run, 'deep-summary.json'), JSON.stringify({ judge: { verdict: 'issues_detected', stamped_bugs: [{ id: 'BUG-01', title: 'stamped', file: 'a.mjs' }] } }));
+    assert.deepEqual(extractBugsFromRun(run, 'components/x').map(b => b.title), ['stamped']);
+  } finally { fs.rmSync(run, { recursive: true, force: true }); }
+});
+
+test('the bug collector finds a run in the sweeps layout, and a run of a path inside the component', async () => {
+  const { findLatestRunForTarget } = await import('../tools/collect-and-log-bugs.mjs');
+  const runs = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-runs-'));
+  try {
+    const run = path.join(runs, 'sweeps', 'board', 'sweep-2'); fs.mkdirSync(run, { recursive: true });
+    fs.writeFileSync(path.join(run, 'summary.json'), JSON.stringify({ target: 'workspaces/x/components/board/engine/board.mjs' }));
+    assert.equal(findLatestRunForTarget('components/board', runs), run);
+    assert.equal(findLatestRunForTarget('components/brain', runs), null);
+  } finally { fs.rmSync(runs, { recursive: true, force: true }); }
+});
+
+test('a model reply with code fences inside its JSON strings keeps its findings; junk throws', async () => {
+  const { parseModelJson } = await import('../engine/deepSweeper.mjs');
+  const reply = '```json\n' + JSON.stringify({ findings: [{ id: 'OPUS-01', recommended_fix: '```js\nconst a = 1;\n```' }] }, null, 2) + '\n```';
+  assert.equal(parseModelJson(reply).findings[0].id, 'OPUS-01');
+  assert.throws(() => parseModelJson('I could not audit this.'), /not JSON/);
+});
+
+test('a wave 3 entry with no code, or a test that cannot import, is a harness error and never proof', async () => {
+  const { runAdversarialTestSuite } = await import('../engine/sweeper.mjs');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'sweeper-suite-'));
+  try {
+    const proofs = runAdversarialTestSuite([{ test_name: 'no_code' }, { test_name: 'bad_import', test_code: "import x from './nope.mjs';" }], out);
+    assert.deepEqual(proofs.map(p => [p.passed, p.isHarnessError]), [[false, true], [false, true]]);
+  } finally { fs.rmSync(out, { recursive: true, force: true }); }
 });

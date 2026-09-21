@@ -3,8 +3,8 @@ name: brain-self-kickoff
 description: >-
   End-of-session memory write-back and clean handoff. Use when the operator asks for a
   "self-kickoff", "hand off", at the end of a long session, or when context is getting full.
-  Updates the brain cards, updates the working-memory card with the current state of play
-  and concrete next steps, and produces a resume prompt for the next session.
+  Updates the brain cards, rewrites the current context's working memory through Opus 4.5 with
+  the state of play and exact next steps, and produces a resume prompt for the next session.
 ---
 
 # brain-self-kickoff — Session Memory Write-Back & Handoff
@@ -27,18 +27,22 @@ node harness/engine/brain.mjs new --entity note --slug <slug> --description "<de
 
 ---
 
-## 2. Update `working-memory` Card
-Update your primary `working-memory` card with the latest summary:
-
-1. **Current State**: What was completed in this session.
-2. **In-Flight Work**: What is currently mid-stream.
-3. **Exact Next Steps**: Concrete, prioritized actions for the next session.
+## 2. Rewrite the Working Memory Through Opus 4.5
+Working memory is per context: `wm-<context>` for the loaded context, `working-memory` when none is
+loaded. You never write it yourself. Write a digest and hand it to the `wm` tool, which asks Opus 4.5
+to rewrite the card whole:
 
 ```bash
-# Update working-memory body
-node harness/engine/brain.mjs new --entity note --slug working-memory --description "Active working memory" 2>/dev/null || true
-echo "## Current State of Play\n...\n\n## Exact Next Actions\n1. ..." | node harness/engine/brain.mjs body working-memory
+node harness/components/brain/tools/wm.mjs which          # which card this handoff updates
+printf '%s' "$DIGEST" | node harness/components/brain/tools/wm.mjs update --event kickoff
 ```
+
+The digest is what you know now: state of play, what is mid-stream, live constraints and gotchas,
+exact next actions. Opus keeps what a future agent must know and drops the rest. The card is not a
+record: no log of the session, no decisions list, no rules, nothing the operator said. If more than
+one context is loaded, run it once per context you worked in with `--context <slug>`.
+
+Read the card the tool prints. That is what the next session starts from.
 
 ---
 

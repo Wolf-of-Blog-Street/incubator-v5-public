@@ -84,11 +84,26 @@ export async function handleAdminRoutes(req, res, pathname, ctxOrAppContext, ...
   // POST /api/v1/admin/agents/:agentId/projects
   const adminProjectAllocMatch = pathname.match(/^\/api\/v1\/admin\/agents\/([a-zA-Z0-9_\-]+)\/projects$/);
   if (method === 'POST' && adminProjectAllocMatch) {
-    ctx.assertAdminOrOperator();
     const agentId = adminProjectAllocMatch[1];
+    // A seat may allocate to itself (sync-workspaces reports its own folders); anyone else needs admin.
+    if (!ctx.isManagerOrOperator() && (!ctx.auth.authenticated || ctx.auth.agentId !== agentId)) {
+      ctx.assertAdminOrOperator();
+    }
     const body = await parseBody(req);
     const project = effectiveRoster.allocateProject(agentId, body);
     sendJson(res, 201, { agentId, project });
+    return true;
+  }
+
+  // DELETE /api/v1/admin/agents/:agentId/projects/:projectId
+  const adminProjectRmMatch = pathname.match(/^\/api\/v1\/admin\/agents\/([a-zA-Z0-9_\-]+)\/projects\/([a-zA-Z0-9_\-]+)$/);
+  if (method === 'DELETE' && adminProjectRmMatch) {
+    const [, agentId, projectId] = adminProjectRmMatch;
+    if (!ctx.isManagerOrOperator() && (!ctx.auth.authenticated || ctx.auth.agentId !== agentId)) {
+      ctx.assertAdminOrOperator();
+    }
+    const removed = effectiveRoster.removeProject(agentId, projectId);
+    sendJson(res, 200, { agentId, removed });
     return true;
   }
 

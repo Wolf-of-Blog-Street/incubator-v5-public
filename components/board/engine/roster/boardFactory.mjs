@@ -106,6 +106,11 @@ export function createBoardFactory(agentStore, options = {}) {
       }
       targetProject = found;
     }
+    if (targetProject.kind === 'project' || !targetProject.dbPath) {
+      const err = new Error(`"${targetProject.id}" is a local project on ${agentId}: listed for observability, it has no board`);
+      err.statusCode = 400;
+      throw err;
+    }
 
     const poolKey = `${agentId}::${targetProject.id}`;
     if (!boardsPool.has(poolKey)) {
@@ -201,6 +206,11 @@ export function aggregateAgentProjects(agent, getBoard) {
   let stagesSummary = [];
 
   for (const proj of agent.projects) {
+    if (proj.kind === 'project') {
+      // A local project is listed for convenience only: no board, no stats.
+      projectSummaries.push({ id: proj.id, name: proj.name, board: null, docs_path: proj.docs_path, kind: 'project', remote: null, stats: null, stages: [] });
+      continue;
+    }
     const board = getBoard(agent.id, proj.id);
     const summary = board.getBoardSummary();
     const allItems = board.listItems();
@@ -217,6 +227,8 @@ export function aggregateAgentProjects(agent, getBoard) {
       name: proj.name,
       board: proj.board,
       docs_path: proj.docs_path,
+      kind: proj.kind || 'workspace',
+      remote: proj.remote || null,
       stats,
       stages: summary.stages
     });

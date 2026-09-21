@@ -1,6 +1,6 @@
 {
   "name": "incubator-v5",
-  "version": "5.3.6",
+  "version": "5.9.1",
   "license": "MIT",
   "description": "Modular agent engineering platform and component suite",
   "type": "module",
@@ -11,7 +11,12 @@
     "test:tier3": "node tools/test.mjs --tier3",
     "scaffold:docs": "node components/docs/tools/scaffold.mjs"
   },
-  "keywords": ["agents", "orchestration", "incubator", "developer-tools"],
+  "keywords": [
+    "agents",
+    "orchestration",
+    "incubator",
+    "developer-tools"
+  ],
   "author": "Project Web",
   "private": true
 }

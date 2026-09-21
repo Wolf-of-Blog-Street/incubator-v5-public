@@ -135,9 +135,14 @@ export async function handleLocalCommand(command, parsed, roster, loadInstaller,
         const versionBadge = ag.harness_version ? ` [v${ag.harness_version}]` : '';
         console.log(`• ${ag.icon || '🤖'} ${ag.name} (${ag.id})${versionBadge}${defaultBadge}`);
         console.log(`  Tags: ${ag.tags?.join(', ') ?? 'none'}`);
+        if (ag.notes) console.log(`  Notes: ${ag.notes}`);
         console.log(`  Tasks: ${ag.stats.totalTasks} total | ${ag.stats.doneTasks} done (${ag.stats.progressPct}%) | ${ag.stats.openBugs} bugs`);
         if (ag.projects && ag.projects.length > 0) {
-          console.log(`  Projects: ${ag.projects.map(p => p.id).join(', ')}`);
+          const ws = ag.projects.filter(p => (p.kind || 'workspace') !== 'project').map(p => p.id);
+          const local = ag.projects.filter(p => p.kind === 'project').map(p => p.id);
+          if (ws.length) console.log(`  Workspaces: ${ws.join(', ')}`);
+          if (local.length) console.log(`  Projects: ${local.join(', ')}`);
+          if (ag.contexts?.length) console.log(`  Contexts: ${ag.contexts.map(c => `${c.active ? '●' : '○'}${c.slug}`).join(', ')}`);
         }
         console.log('');
       }
@@ -240,6 +245,13 @@ export async function handleLocalCommand(command, parsed, roster, loadInstaller,
 
     case 'project': {
       const sub = parsed._[1];
+      if (sub === 'rm') {
+        const [agentId, projId] = [parsed._[2], parsed._[3]];
+        if (!agentId || !projId) { console.error('Error: agent-id and project-id required. Example: fleet project rm example-pa old-thing'); process.exit(1); }
+        const r = roster.removeProject(agentId, projId);
+        console.log(`\n🗑  Removed "${projId}" from ${agentId}${r.board ? ` (board file ${r.board} left on disk)` : ''}\n`);
+        break;
+      }
       if (sub !== 'add') {
         console.error('Error: project subcommand required. Example: fleet project add example-pa telemetry-svc');
         process.exit(1);
@@ -258,6 +270,22 @@ export async function handleLocalCommand(command, parsed, roster, loadInstaller,
       };
       const res = roster.allocateProject(agentId, payload);
       console.log(`\n✅ Allocated project "${res.name}" (${res.id}) to agent "${agentId}"\n`);
+      break;
+    }
+
+    case 'notes': {
+      const agentId = parsed._[1];
+      if (!agentId) {
+        console.error('Error: agent-id required. Example: fleet notes example-pa "Handles the PA platform"');
+        process.exit(1);
+      }
+      if (parsed._.length > 2) {
+        const updated = roster.updateAgent(agentId, { notes: parsed._.slice(2).join(' ') });
+        console.log(`\n✅ Notes for "${agentId}": ${updated.notes || '(cleared)'}\n`);
+      } else {
+        const ag = roster.getAgent(agentId);
+        console.log(`\n${ag.icon || '🤖'} ${ag.name} (${ag.id})\n  Notes: ${ag.notes || '(none)'}\n`);
+      }
       break;
     }
 

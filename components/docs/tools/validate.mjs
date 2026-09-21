@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 
-const REQUIRED_TIERS = ['system', 'design', 'support'];
+const REQUIRED_TIERS = ['product', 'system', 'design', 'support'];
 const REQUIRED_FILES = [
   'README.md',
+  'product/INDEX.md',
+  'product/REQUIREMENTS.md',
+  'product/STORIES.md',
   'system/INDEX.md',
   'system/ARCHITECTURE.md',
   'system/MANUAL.md',
