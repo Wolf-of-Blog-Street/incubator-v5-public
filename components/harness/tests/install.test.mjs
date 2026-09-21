@@ -83,7 +83,10 @@ test('installHarness installs default skills for Claude (.claude/skills) and Cod
     fs.writeFileSync(wmPath, 'KEEP');
     await installHarness({ agentHome: tmpAgentHome });
     assert.equal(fs.readFileSync(wmPath, 'utf8'), 'KEEP', 'existing default card never overwritten');
-    for (const skill of ['brain-self-kickoff', 'context-load', 'brain-session-end', 'viewers', 'opus-writer', 'world-class-hooks', 'friends']) {
+    // The writing skills are not in every distribution of this repo (the public one leaves them out): expect what ships.
+    const shipped = (name) => fs.existsSync(new URL(`../skills/${name}/SKILL.md`, import.meta.url));
+    const writing = ['opus-writer', 'world-class-hooks'].filter(shipped);
+    for (const skill of ['brain-self-kickoff', 'context-load', 'brain-session-end', 'viewers', 'friends', 'bug-sweeper', ...writing]) {
       assert.ok(fs.existsSync(path.join(tmpAgentHome, '.claude/skills', skill, 'SKILL.md')), `${skill} in .claude/skills`);
       assert.ok(fs.existsSync(path.join(tmpAgentHome, '.agents/skills', skill, 'SKILL.md')), `${skill} in .agents/skills`);
       assert.ok(res.manifest.skills.includes(skill), `${skill} recorded in manifest`);
@@ -99,7 +102,7 @@ test('installHarness installs default skills for Claude (.claude/skills) and Cod
     const st2 = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
     assert.equal(st2.env.KEEP, '1');
     assert.equal(st2.hooks.SessionStart.length, 1);
-    for (const pack of ['full-sample-1', 'world-class-hooks', 'fear-hooks', 'bhw-titles']) {
+    for (const pack of shipped('opus-writer') ? ['full-sample-1', 'world-class-hooks', 'fear-hooks', 'bhw-titles'] : []) {
       assert.ok(fs.existsSync(path.join(tmpAgentHome, 'data/opus-writer/voice-pack', `${pack}.md`)), `${pack} voice pack installed`);
     }
   } finally {
