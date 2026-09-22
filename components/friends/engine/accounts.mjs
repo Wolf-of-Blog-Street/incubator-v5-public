@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { getDefaultAuthBaseDir, validateAgentId, SUPPORTED_PROVIDERS } from './sandbox.mjs';
 
 export const ACCOUNT_STATUSES = ['healthy', 'cooling', 'expired', 'revoked'];
@@ -29,15 +30,29 @@ export function maskSecret(secret) {
   return `${clean.slice(0, 4)}...${clean.slice(-4)}`;
 }
 
-/**
- * Derives a consistent local machine encryption key for securing cached secrets.
- * @param {string} [salt]
- * @returns {Buffer} 32-byte key
- */
-function deriveLocalEncryptionKey(salt = 'incubator-v5-friends-auth') {
-  const seed = `${os.hostname()}-${os.userInfo().username}-${salt}`;
-  return crypto.scryptSync(seed, 'salt-incubator-v5', 32);
+// The key comes from the machine's hardware id, never the hostname: macOS renames the host when the
+// network changes, and a hostname key then fails to open every stored token.
+let machineIdCache = null;
+function machineId() {
+  if (machineIdCache) return machineIdCache; // a failed read is never cached: the next call tries again
+  if (process.platform === 'darwin') {
+    const out = spawnSync('/usr/sbin/ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], { encoding: 'utf8', timeout: 10000 }).stdout || '';
+    const id = out.match(/"IOPlatformUUID" = "([^"]+)"/)?.[1];
+    // A Mac always has one. Never fall back to another key here: a silent key switch locks every token out.
+    if (!id) throw Object.assign(new Error('cannot read this Mac\'s hardware id (ioreg)'), { code: 'CREDENTIAL_KEY_UNAVAILABLE' });
+    return (machineIdCache = id);
+  }
+  for (const f of ['/etc/machine-id', '/var/lib/dbus/machine-id']) {
+    try { const id = fs.readFileSync(f, 'utf8').trim(); if (id) return (machineIdCache = id); } catch {}
+  }
+  return null;
 }
+
+const SALT = 'incubator-v5-friends-auth';
+const keyFrom = (seed) => crypto.scryptSync(`${seed}-${os.userInfo().username}-${SALT}`, 'salt-incubator-v5', 32);
+// ponytail: hostname fallback only where no machine id exists; add a keyfile if such a host joins the fleet.
+const currentKey = () => keyFrom(machineId() || os.hostname());
+const legacyKey = () => keyFrom(os.hostname()); // how tokens were stored before; read-only, for migration
 
 /**
  * Encrypts a plaintext string using AES-256-GCM.
@@ -46,37 +61,39 @@ function deriveLocalEncryptionKey(salt = 'incubator-v5-friends-auth') {
  */
 export function encryptCredential(plaintext) {
   if (!plaintext) return '';
-  const key = deriveLocalEncryptionKey();
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', currentKey(), iv);
   let encrypted = cipher.update(plaintext, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const tag = cipher.getAuthTag().toString('hex');
   return `${iv.toString('hex')}:${tag}:${encrypted}`;
 }
 
+const SEALED = /^[0-9a-f]{24}:[0-9a-f]{32}:[0-9a-f]*$/;
+export const isSealed = (payload) => typeof payload === 'string' && SEALED.test(payload);
+
 /**
- * Decrypts an AES-256-GCM encrypted credential string.
+ * Decrypts an AES-256-GCM encrypted credential string. Text that is not in the sealed format is
+ * returned as it is (plaintext from before encryption). A sealed value that no key opens THROWS:
+ * the sealed text is never handed back as if it were the credential.
  * @param {string} payload
  * @returns {string}
  */
 export function decryptCredential(payload) {
-  if (!payload || !payload.includes(':')) return payload;
-  try {
-    const parts = payload.split(':');
-    if (parts.length !== 3) return payload;
-    const [ivHex, tagHex, encryptedHex] = parts;
-    const key = deriveLocalEncryptionKey();
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch {
-    // If decryption fails (e.g. plaintext migration), return as-is
-    return payload;
+  if (!isSealed(payload)) return payload;
+  const [ivHex, tagHex, encryptedHex] = payload.split(':');
+  for (const key of [currentKey(), legacyKey()]) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+      decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+      return decipher.update(encryptedHex, 'hex', 'utf8') + decipher.final('utf8');
+    } catch {}
   }
+  throw Object.assign(new Error('stored credential cannot be decrypted on this machine; sign the account in again'), { code: 'CREDENTIAL_UNREADABLE' });
 }
+
+// For listings: an unreadable credential shows as missing instead of failing the whole list.
+const readable = (payload) => { try { return decryptCredential(payload); } catch { return null; } };
 
 /**
  * Opens and manages the local account repository.
@@ -194,22 +211,22 @@ export function openAccountStore(options = {}) {
       const copy = JSON.parse(JSON.stringify(acc));
       if (!includeSecrets) {
         if (copy.credentials.apiKey) {
-          copy.credentials.apiKey = maskSecret(decryptCredential(copy.credentials.apiKey));
+          copy.credentials.apiKey = maskSecret(readable(copy.credentials.apiKey));
         }
         if (copy.credentials.oauth?.accessToken) {
-          copy.credentials.oauth.accessToken = maskSecret(decryptCredential(copy.credentials.oauth.accessToken));
+          copy.credentials.oauth.accessToken = maskSecret(readable(copy.credentials.oauth.accessToken));
           if (copy.credentials.oauth.refreshToken) {
-            copy.credentials.oauth.refreshToken = maskSecret(decryptCredential(copy.credentials.oauth.refreshToken));
+            copy.credentials.oauth.refreshToken = maskSecret(readable(copy.credentials.oauth.refreshToken));
           }
         }
       } else {
         if (copy.credentials.apiKey) {
-          copy.credentials.apiKey = decryptCredential(copy.credentials.apiKey);
+          copy.credentials.apiKey = readable(copy.credentials.apiKey);
         }
         if (copy.credentials.oauth?.accessToken) {
-          copy.credentials.oauth.accessToken = decryptCredential(copy.credentials.oauth.accessToken);
+          copy.credentials.oauth.accessToken = readable(copy.credentials.oauth.accessToken);
           if (copy.credentials.oauth.refreshToken) {
-            copy.credentials.oauth.refreshToken = decryptCredential(copy.credentials.oauth.refreshToken);
+            copy.credentials.oauth.refreshToken = readable(copy.credentials.oauth.refreshToken);
           }
         }
       }

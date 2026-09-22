@@ -120,3 +120,33 @@ test('Account Pool — Tenant Agent Assignment Isolation', (t) => {
   const forManager = store.getHealthyAccount('codex', 'manager-pm');
   assert.equal(forManager, null);
 });
+
+test('Account Pool — Credentials survive a hostname change, read the old key, and fail closed', async () => {
+  const { default: osObj } = await import('node:os');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const crypto = await import('node:crypto');
+  const realHostname = osObj.hostname;
+  const setHost = (h) => { osObj.hostname = () => h; syncBuiltinESMExports(); };
+  try {
+    // A token stored before this fix: keyed on the hostname.
+    const legacyKey = crypto.scryptSync(`${osObj.hostname()}-${osObj.userInfo().username}-incubator-v5-friends-auth`, 'salt-incubator-v5', 32);
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', legacyKey, iv);
+    const ct = c.update('legacy-token', 'utf8', 'hex') + c.final('hex');
+    assert.equal(decryptCredential(`${iv.toString('hex')}:${c.getAuthTag().toString('hex')}:${ct}`), 'legacy-token');
+
+    // A token stored now opens after macOS renames the host.
+    const sealed = encryptCredential('fresh-token');
+    setHost('Mac');
+    assert.equal(decryptCredential(sealed), 'fresh-token');
+
+    // A sealed value no key opens is refused, never handed back as the credential.
+    const bad = sealed.slice(0, -2) + (sealed.endsWith('00') ? '11' : '00');
+    assert.throws(() => decryptCredential(bad), { code: 'CREDENTIAL_UNREADABLE' });
+
+    // Plaintext from before encryption still passes through.
+    assert.equal(decryptCredential('sk-plain'), 'sk-plain');
+  } finally {
+    osObj.hostname = realHostname; syncBuiltinESMExports();
+  }
+});

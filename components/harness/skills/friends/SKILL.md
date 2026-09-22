@@ -46,6 +46,10 @@ node harness/components/friends/tools/friend.mjs run <friend> "<ask>" [--model <
   what it could not do). It never touches the board, the brain, jj state, or anything outside the
   task; it reports a problem it sees and never fixes it.
 - Its final message is all you get. Ask for a complete report.
+- Visual work (mockups, pages, design): the reference images are the brief. Save them to files,
+  list the paths first, and make step one "open and study these images". Keep the text to product
+  facts and real content. Never describe the look in words instead, and never add design rules of
+  your own: text rules override what the designer sees.
 
 ## Accounts
 
