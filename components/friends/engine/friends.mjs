@@ -391,6 +391,13 @@ export function spawnFriendProcess(binary, args, options = {}) {
     }
 
     const env = { ...baseEnv, ...(options.env || {}) };
+    // Claude friends go through the account proxy when one is configured (CLAUDE_PROXY_URL in the
+    // operator's environment, or ~/.claude/settings.json env.ANTHROPIC_BASE_URL), so a friend run
+    // draws on the pool, not on one login. A pool API key means a real API account: no proxy for it.
+    if (/\bclaude/.test(path.basename(binary)) && !env.ANTHROPIC_API_KEY && !env.ANTHROPIC_BASE_URL) {
+      const proxy = process.env.CLAUDE_PROXY_URL || claudeSettingsBaseUrl();
+      if (proxy) env.ANTHROPIC_BASE_URL = proxy;
+    }
 
     let stdout = '';
     let stderr = '';
@@ -470,6 +477,10 @@ export function spawnFriendProcess(binary, args, options = {}) {
  * A run has no timer unless the caller sets one. 0, a negative number, or text that is not a
  * number all mean "no timer"; a live orchestrator decides when a run has gone on too long.
  */
+function claudeSettingsBaseUrl() {
+  try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).env?.ANTHROPIC_BASE_URL || null; } catch { return null; }
+}
+
 export function parseTimeoutMs(value) {
   const n = parseInt(value, 10);
   return Number.isNaN(n) || n < 0 ? 0 : n;
