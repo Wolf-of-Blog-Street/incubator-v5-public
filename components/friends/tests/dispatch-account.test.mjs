@@ -113,6 +113,39 @@ exit 1
   // Verify account in store was placed into cooling state
   const updatedAcc = store.getAccount('codex-rate-limited');
   assert.equal(updatedAcc.status, 'cooling');
+
+  // A successful run that merely mentions 429 or a 401 handler leaves the account alone.
+  // Mock script simulating 429 rate limit
+  const okScript = path.join(tmpAuthDir, 'mock-codex-ok.sh');
+  fs.writeFileSync(okScript, `#!/bin/sh
+echo "fixed the 401 handler; 429 lines changed"
+exit 0
+`, { mode: 0o755 });
+
+  const okConfig = path.join(tmpAuthDir, 'friends.json');
+  fs.writeFileSync(okConfig, JSON.stringify({
+    codex: {
+      binary: okScript,
+      defaultFlags: []
+    }
+  }));
+
+  const okReport = await dispatchFriend('codex', {
+    prompt: 'test prompt',
+    noJj: true,
+    baseAuthDir: tmpAuthDir,
+    accountsPath,
+    configPath: okConfig,
+    agentId: 'manager-pm'
+  });
+
+  assert.equal(okReport.exitCode, 0);
+  assert.equal(okReport.isRateLimited, false);
+  assert.equal(okReport.isRevoked, false);
+
+  // Still cooling from the first run; the successful run did not revoke it.
+  const okAcc = store.getAccount('codex-rate-limited');
+  assert.equal(okAcc.status, 'cooling');
   assert.ok(updatedAcc.coolingUntil > Date.now());
   assert.equal(updatedAcc.rateLimitCount, 1);
 });

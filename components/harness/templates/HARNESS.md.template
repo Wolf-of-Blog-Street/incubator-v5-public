@@ -469,6 +469,7 @@ A friend run has **no timer** unless the caller sets one. `friend run` and `disp
    node harness/components/friends/tools/friend.mjs dispatch claude "Review API error handling in routes/docs.mjs"
    node harness/components/friends/tools/friend.mjs dispatch codex "Implement constant-time timingSafeEqual helper" --model gpt-6-astra
    ```
+4. **Remote hosts (`--host <ssh-alias> --remote-cwd <dir>`)**: a Claude friend runs on another machine over ssh. The prompt, system prompt and token go over stdin; a watchdog on the host kills the run when ssh dies; there is no jj isolation. The seat sets up the host and its folders, one folder per concurrent run. The `friends` skill ("Remote hosts") has the setup.
 
 ---
 

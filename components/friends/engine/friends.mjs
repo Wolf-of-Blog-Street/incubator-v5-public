@@ -55,6 +55,8 @@ export const DEFAULT_FRIENDS_CATALOG = {
     description: 'Anthropic Claude Code CLI with automated tool calling and analysis',
     promptFlag: '-p',
     systemPromptFlag: '--system-prompt',
+    systemPromptFileFlag: '--system-prompt-file',
+    stdinPrompt: true,
     modelFlag: '--model',
     effortFlag: null,
     defaultModel: 'claude-fable-5-1',
@@ -66,7 +68,9 @@ export const DEFAULT_FRIENDS_CATALOG = {
       'fable-5': 'claude-fable-5-1',
       'fable 5.1': 'claude-fable-5-1',
       'sonnet': 'sonnet',
-      'opus': 'claude-opus-4-8'
+      'opus': 'claude-opus-5-5',
+      'opus-5.5': 'claude-opus-5-5',
+      'opus 5.5': 'claude-opus-5-5'
     },
     supportsNonInteractive: true
   },
@@ -77,6 +81,8 @@ export const DEFAULT_FRIENDS_CATALOG = {
     description: 'Claude Code CLI pinned to claude-opus-4-5, text only: no tools, no MCP, no project hooks; the writing model',
     promptFlag: '-p',
     systemPromptFlag: '--system-prompt',
+    systemPromptFileFlag: '--system-prompt-file',
+    stdinPrompt: true,
     modelFlag: '--model',
     effortFlag: null,
     defaultModel: 'claude-opus-4-5',
@@ -366,6 +372,7 @@ export async function withJjIsolation(cwd, options, executeFn) {
  * @param {number} [options.timeoutMs=120000] - Default timeout: 2 minutes (0 disables timeout)
  * @param {Record<string, string>} [options.env={}]
  * @param {boolean} [options.inheritLogin=false] - Keep the operator's CLI config dirs (no pool account)
+ * @param {string} [options.input] - Text written to the child's stdin before it is closed
  * @param {Function} [options.onStdout] - (chunk: string) => void
  * @param {Function} [options.onStderr] - (chunk: string) => void
  * @returns {Promise<{ exitCode: number, stdout: string, stderr: string, durationMs: number }>}
@@ -410,7 +417,8 @@ export function spawnFriendProcess(binary, args, options = {}) {
     });
 
     if (child.stdin) {
-      try { child.stdin.end(); } catch {}
+      child.stdin.on('error', () => {}); // a child that exits early closes its stdin: not our error
+      try { child.stdin.end(options.input ?? undefined); } catch {}
     }
 
     let timedOut = false;
@@ -452,7 +460,7 @@ export function spawnFriendProcess(binary, args, options = {}) {
       }
     });
 
-    child.on('close', code => {
+    child.on('close', (code, signal) => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (killTimer) clearTimeout(killTimer);
       if (!isFinished) {
@@ -461,8 +469,11 @@ export function spawnFriendProcess(binary, args, options = {}) {
           reject(new Error(`Friend process timed out after ${timeoutMs}ms (${binary} ${args.slice(0, 2).join(' ')}). CUT BY A TIMER THE CALLER SET: the work is NOT finished and this is not a verdict. Resume it in the same workspace, or run it with --timeout 0.`));
         } else {
           const durationMs = Date.now() - startTime;
+          // A child killed by a signal has code null: report 128 + signal number, never a green 0.
+          const signalCode = signal ? 128 + (os.constants.signals[signal] || 0) : 1;
           resolve({
-            exitCode: code ?? 0,
+            exitCode: code ?? signalCode,
+            signal: signal || null,
             stdout,
             stderr,
             durationMs
@@ -473,14 +484,26 @@ export function spawnFriendProcess(binary, args, options = {}) {
   });
 }
 
-/**
- * A run has no timer unless the caller sets one. 0, a negative number, or text that is not a
- * number all mean "no timer"; a live orchestrator decides when a run has gone on too long.
- */
 function claudeSettingsBaseUrl() {
   try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).env?.ANTHROPIC_BASE_URL || null; } catch { return null; }
 }
 
+/**
+ * Rate limit or revoked login, read from the output of a FAILED run only: a green run that prints
+ * "429" in a diff stat is not a rate limit.
+ */
+export function classifyFailure({ exitCode, stdout = '', stderr = '' }) {
+  if (exitCode === 0) return { isRateLimited: false, isRevoked: false };
+  const text = `${stdout} ${stderr}`;
+  const isRateLimited = /\b429\b|rate[_\s-]?limit(ed)?\b|quota[_\s-]?exceeded/i.test(text);
+  const isRevoked = !isRateLimited && /\b401\b|\bunauthorized\b|\brevoked\b|token[_\s-]?expired/i.test(text);
+  return { isRateLimited, isRevoked };
+}
+
+/**
+ * A run has no timer unless the caller sets one. 0, a negative number, or text that is not a
+ * number all mean "no timer"; a live orchestrator decides when a run has gone on too long.
+ */
 export function parseTimeoutMs(value) {
   const n = parseInt(value, 10);
   return Number.isNaN(n) || n < 0 ? 0 : n;
@@ -502,6 +525,7 @@ export function parseTimeoutMs(value) {
  * @returns {Promise<object>} Execution report
  */
 export async function dispatchFriend(friendId, options = {}) {
+  if (options.host) return dispatchRemoteFriend(friendId, options);
   const { binary, args, provider } = resolveFriendCommand(friendId, options);
   const cwd = options.cwd || process.cwd();
   const description = options.description || `friend(${friendId}): ${options.prompt ? options.prompt.slice(0, 60) : 'run'}`;
@@ -588,9 +612,7 @@ export async function dispatchFriend(friendId, options = {}) {
     }
   );
 
-  const combinedOutput = `${report.result.stdout} ${report.result.stderr}`;
-  const isRateLimited = /429|rate[_\s-]?limit|quota[_\s-]?exceeded/i.test(combinedOutput);
-  const isRevoked = /401|unauthorized|revoked|token[_\s-]?expired/i.test(combinedOutput);
+  const { isRateLimited, isRevoked } = classifyFailure(report.result);
 
   if (activeAccount && store) {
     if (isRateLimited) {
@@ -621,5 +643,115 @@ export async function dispatchFriend(friendId, options = {}) {
     durationMs: report.result.durationMs,
     isRateLimited,
     isRevoked
+  };
+}
+
+/**
+ * Quotes one word for a POSIX shell: ssh joins its argv into one string that the remote shell parses.
+ */
+export function shellQuote(word) {
+  return `'${String(word).replace(/'/g, `'\\''`)}'`;
+}
+
+/** Auth variables a remote run forwards from the local environment (over stdin, never argv). */
+export const REMOTE_AUTH_VARS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'MOONSHOT_API_KEY', 'XAI_API_KEY'];
+
+/**
+ * The wrapper the remote shell runs. Arguments: $0 friend-<runid> (the marker ps and pkill see),
+ * $1 working directory, $2 system-prompt-file flag, then the command. Stdin: a count of auth lines,
+ * the NAME=value lines, the system prompt byte count and bytes, then the prompt, which becomes the
+ * friend's stdin (through fd 3: sh gives a background job /dev/null before any <&0). The friend runs in its own session so one kill takes its whole process tree; a
+ * watchdog kills that tree when the ssh session (the wrapper's parent) goes away.
+ */
+export const REMOTE_WRAPPER = `set -u
+IFS= read -r k; names=
+i=0; while [ "$i" -lt "$k" ]; do IFS= read -r l; export "$l"; names="$names \${l%%=*}"; i=$((i+1)); done
+IFS= read -r n; sp=
+if [ "$n" -gt 0 ]; then sp=$(mktemp); dd bs=1 count="$n" of="$sp" 2>/dev/null; fi
+cd "$1" || exit 97
+flag=$2; shift 2
+[ -n "$sp" ] && set -- "$@" "$flag" "$sp"
+exec 3<&0
+setsid "$@" <&3 3<&- & child=$!
+exec 3<&-
+for v in $names; do unset "$v"; done
+stop() { kill -TERM "-$child" 2>/dev/null; sleep 5; kill -KILL "-$child" 2>/dev/null; }
+trap 'stop; [ -n "$sp" ] && rm -f "$sp"; exit 143' HUP INT TERM
+parent=$PPID
+( while kill -0 "$parent" 2>/dev/null; do sleep 5; done; stop ) </dev/null >/dev/null 2>&1 & dog=$!
+wait "$child"; rc=$?
+kill "$dog" 2>/dev/null; [ -n "$sp" ] && rm -f "$sp"
+exit "$rc"`;
+
+/**
+ * Builds the ssh argv and the stdin for a remote run. Pure: no I/O, so it is tested directly.
+ * @returns {{ sshArgs: string[], input: string, runId: string, remoteCwd: string }}
+ */
+export function buildRemoteInvocation(friendId, options = {}, env = process.env) {
+  const catalog = getFriendsCatalog(options.configPath);
+  const provider = catalog[friendId];
+  if (!provider) throw new Error(`Unknown friend provider "${friendId}"`);
+  if (!provider.stdinPrompt) throw new Error(`Friend "${friendId}" cannot run remotely: it has no stdin prompt (stdinPrompt in the catalog)`);
+  if (options.systemPrompt && !provider.systemPromptFileFlag) throw new Error(`Friend "${friendId}" cannot take a system prompt remotely (systemPromptFileFlag in the catalog)`);
+  if (!options.remoteCwd) throw new Error('A remote run needs --remote-cwd: the folder on the host the friend works in');
+  if (!options.host || String(options.host).startsWith('-')) throw new Error(`A remote run needs --host <ssh-alias>; "${options.host ?? ''}" is not one`); // a leading dash would be an ssh option
+
+  const { binary, args } = resolveFriendCommand(friendId, { ...options, prompt: null, systemPrompt: null });
+  if (provider.promptFlag) args.push(provider.promptFlag);
+
+  const auth = REMOTE_AUTH_VARS.filter(v => env[v]).map(v => {
+    if (/[\r\n]/.test(env[v])) throw new Error(`${v} holds a line break: refusing to forward it`);
+    return `${v}=${env[v]}`;
+  });
+  const system = options.systemPrompt || '';
+  const input = `${auth.length}\n${auth.map(l => `${l}\n`).join('')}${Buffer.byteLength(system)}\n${system}${options.prompt || ''}`;
+
+  const runId = options.runId || `${Date.now().toString(36)}-${process.pid}`;
+  const remote = ['sh', '-c', REMOTE_WRAPPER, `friend-${runId}`, options.remoteCwd, provider.systemPromptFileFlag || '', binary, ...args];
+  const sshArgs = ['-o', 'BatchMode=yes', '-o', 'ServerAliveInterval=30', options.host, remote.map(shellQuote).join(' ')];
+  return { sshArgs, input, runId, remoteCwd: options.remoteCwd };
+}
+
+/**
+ * Runs a friend on another host over ssh. No jj isolation, no sandbox profile, no local proxy:
+ * the host's folder is the seat's to prepare (see the friends skill). The dispatchFriend report shape, plus host and runId.
+ */
+async function dispatchRemoteFriend(friendId, options) {
+  const { sshArgs, input, runId, remoteCwd } = buildRemoteInvocation(friendId, options);
+  if (typeof options.onStderr === 'function') {
+    options.onStderr(`[friends] remote run friend-${runId} on ${options.host}:${remoteCwd}\n`);
+    if (!REMOTE_AUTH_VARS.some(v => process.env[v])) {
+      options.onStderr(`[friends] no token in this environment to forward (${REMOTE_AUTH_VARS.join(', ')}): the host needs its own login. Run through panel-as.sh to forward a Max token.\n`);
+    }
+  }
+  const res = await spawnFriendProcess('ssh', sshArgs, {
+    cwd: process.cwd(),
+    input,
+    inheritLogin: true,
+    timeoutMs: options.timeoutMs ?? 0,
+    onStdout: options.onStdout,
+    onStderr: options.onStderr
+  });
+  return {
+    provider: friendId,
+    displayName: getFriendsCatalog(options.configPath)[friendId].displayName,
+    binary: 'ssh',
+    args: sshArgs,
+    prompt: options.prompt,
+    host: options.host,
+    cwd: remoteCwd,
+    runId,
+    accountId: null,
+    auth: 'forwarded',
+    isIsolated: false,
+    changeId: null,
+    commitId: null,
+    diffStat: null,
+    exitCode: res.exitCode,
+    stdout: res.stdout,
+    stderr: res.stderr,
+    durationMs: res.durationMs,
+    signal: res.signal,
+    ...classifyFailure(res)
   };
 }

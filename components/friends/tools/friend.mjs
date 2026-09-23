@@ -50,7 +50,9 @@ function parseArgs(rawArgs) {
     voice: null,
     promptFile: null,
     systemPrompt: null,
-    systemPromptFile: null
+    systemPromptFile: null,
+    host: null,
+    remoteCwd: null
   };
 
   const positional = [];
@@ -78,6 +80,10 @@ function parseArgs(rawArgs) {
       args.timeoutMs = parseTimeoutMs(rawArgs[++i]);
     } else if (arg === '--cwd') {
       args.cwd = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : process.cwd();
+    } else if (arg === '--host') {
+      args.host = rawArgs[++i] || null;
+    } else if (arg === '--remote-cwd') {
+      args.remoteCwd = rawArgs[++i] || null;
     } else if (arg === '--config') {
       args.configPath = rawArgs[i + 1] ? path.resolve(rawArgs[++i]) : null;
     } else if (arg === '--accounts') {
@@ -143,6 +149,8 @@ Options:
   --timeout <ms>                      Cut the run after <ms>. Default: 0, no timer (0 or less = no timer).
                                       Set one only for a quick call, e.g. --timeout 60000 for a probe.
   --cwd <path>                        Target working directory (default: current directory)
+  --host <ssh-alias>                  Run the friend on this host over ssh (no jj isolation; see the friends skill)
+  --remote-cwd <dir>                  The folder on --host the friend works in (required with --host)
   --config <path>                     Custom friends.json catalog path
   --accounts <path>                   Custom accounts.json storage path
   --json                              Output JSON formatted results
@@ -259,14 +267,14 @@ async function handleRun(args) {
     return 1;
   }
 
-  const inJj = isJjRepository(args.cwd);
+  const inJj = !args.host && isJjRepository(args.cwd);
   const willIsolate = inJj && !args.noJj;
 
   if (!args.json) {
     console.log(`\n🤝 [Friend Dispatch] ${provider.displayName} (${args.provider})`);
     console.log(`Mandate: "${args.prompt}"`);
     console.log(`Isolation: ${willIsolate ? '🛡️ Jujutsu child revision (jj new)' : '⚠️ Direct working copy (no jj isolation)'}`);
-    console.log(`Working dir: ${args.cwd}\n`);
+    console.log(`Working dir: ${args.host ? `${args.host}:${args.remoteCwd}` : args.cwd}\n`);
   }
 
   try {
@@ -284,6 +292,8 @@ async function handleRun(args) {
       model: args.model,
       effort: args.effort,
       noJj: args.noJj,
+      host: args.host,
+      remoteCwd: args.remoteCwd,
       autoAbandon: args.autoAbandon,
       timeoutMs: args.timeoutMs,
       configPath: args.configPath,

@@ -71,7 +71,7 @@ describe('Friends Engine — Unit Tests', () => {
     assert.equal(res.binary, 'claude');
     assert.ok(res.args.includes('--dangerously-skip-permissions'), 'includes default flags');
     assert.ok(res.args.includes('--model'), 'includes model flag');
-    assert.ok(res.args.includes('claude-opus-4-8') || res.args.includes('opus'), 'includes resolved or overridden model');
+    assert.ok(res.args.includes('claude-opus-5-5'), 'opus resolves to Opus 5.5');
     assert.ok(res.args.includes('--verbose'), 'includes extra flags');
     assert.ok(res.args.includes('-p'), 'includes prompt flag');
     assert.ok(res.args.includes('Refactor test suite'), 'includes prompt text');
@@ -185,4 +185,45 @@ test('voice pack: system prompt is opening line, standard preamble, then the pac
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+describe('Friends Engine — remote runs', async () => {
+  const { shellQuote, buildRemoteInvocation } = await import('../engine/friends.mjs');
+  const { spawnSync } = await import('node:child_process');
+
+  test('shellQuote survives a quote, a $ and a newline through a real shell', () => {
+    const word = "it's $HOME\n`id`; rm -rf x";
+    const res = spawnSync('sh', ['-c', `printf %s ${shellQuote(word)}`], { encoding: 'utf8' });
+    assert.equal(res.stdout, word);
+  });
+
+  test('remote invocation: prompt and secrets go over stdin, never argv', () => {
+    const inv = buildRemoteInvocation('claude', {
+      host: 'box', remoteCwd: "/w/it's", prompt: 'do $x', systemPrompt: 'be brief', runId: 'r1'
+    }, { CLAUDE_CODE_OAUTH_TOKEN: 'tok-123' });
+    const cmd = inv.sshArgs.at(-1);
+    assert.equal(inv.sshArgs.at(-2), 'box');
+    assert.ok(!cmd.includes('tok-123') && !cmd.includes('be brief') && !cmd.includes('do $x'), 'no secret or prompt in argv');
+    assert.ok(cmd.includes("'friend-r1'") && cmd.includes("'--system-prompt-file'") && cmd.includes("'-p'"));
+    assert.equal(inv.input, '1\nCLAUDE_CODE_OAUTH_TOKEN=tok-123\n8\nbe briefdo $x');
+  });
+
+  test('remote invocation refuses a friend without a stdin prompt, and a missing --remote-cwd', () => {
+    assert.throws(() => buildRemoteInvocation('codex', { host: 'b', remoteCwd: '/w', prompt: 'x' }, {}), /stdin prompt/);
+    assert.throws(() => buildRemoteInvocation('claude', { host: 'b', prompt: 'x' }, {}), /remote-cwd/);
+  });
+
+  test('a green run that prints 429 or 401 is not a rate limit or a revoked login', async () => {
+    const { classifyFailure } = await import('../engine/friends.mjs');
+    assert.deepEqual(classifyFailure({ exitCode: 0, stdout: 'src/api.mjs | 429 ++++ add a 401 handler' }), { isRateLimited: false, isRevoked: false });
+    assert.equal(classifyFailure({ exitCode: 1, stderr: 'HTTP 429 Too Many Requests' }).isRateLimited, true);
+    assert.equal(classifyFailure({ exitCode: 1, stderr: '401 Unauthorized' }).isRevoked, true);
+    assert.equal(classifyFailure({ exitCode: 1, stdout: 'port 14290 in use' }).isRateLimited, false);
+  });
+
+  test('a child killed by a signal does not report exit code 0', async () => {
+    const res = await spawnFriendProcess('sh', ['-c', 'kill -TERM $$'], { timeoutMs: 5000 });
+    assert.equal(res.signal, 'SIGTERM');
+    assert.equal(res.exitCode, 143);
+  });
 });

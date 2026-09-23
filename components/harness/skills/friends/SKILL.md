@@ -51,6 +51,44 @@ node harness/components/friends/tools/friend.mjs run <friend> "<ask>" [--model <
   facts and real content. Never describe the look in words instead, and never add design rules of
   your own: text rules override what the designer sees.
 
+## Remote hosts
+
+A friend can run on another machine, so heavy work does not load this one:
+
+```bash
+node harness/components/friends/tools/friend.mjs run claude --host <ssh-alias> --remote-cwd <dir-on-host> --prompt-file brief.md
+```
+
+- `--host` is any ssh alias. Put the host on the tailnet and point the alias at its tailnet name.
+- The prompt, the system prompt and the login token go over ssh stdin. They are never in argv and
+  never on the host's disk. The token is the one in your environment (`CLAUDE_CODE_OAUTH_TOKEN`,
+  or a provider API key), so `panel-as.sh` and account rotation work unchanged. On the host the
+  friend's own tools see the token in their environment, the same as on this machine.
+  A laptop login lives in the keychain, not the environment: a plain run forwards nothing and
+  fails with "Not logged in". Wrap the run in `panel-as.sh <account>`.
+- A remote run has no jj isolation, no sandbox profile and no local proxy. Only friends with
+  `stdinPrompt` in the catalog can run remotely (the two Claude friends today).
+- When ssh dies, a watchdog on the host kills the friend's whole process tree within 5 seconds.
+  Each run has a marker: `ssh <host> pkill -f friend-<runid>` stops one run by hand. The run id
+  is in the first stderr line.
+
+**Setting up a host is the seat's job.** The harness gives the mechanism; the seat picks the layout:
+
+1. A Linux host (the wrapper uses `setsid`) and a user with no sudo, for friend runs only. Install node, the friend CLI (the same version as
+   here), and what the task needs (jj, uv, a compiler). Do not log the CLI in: the token comes with
+   each run.
+2. The files the friend works on. Two patterns:
+   - **Same path**: make this machine's absolute seat path on the host. Scripts and prompts that
+     name absolute paths then work unchanged.
+   - **Path map**: keep the host's own layout and pass the matching folder in `--remote-cwd`.
+3. **One folder per concurrent run.** With no jj isolation, two friends in one folder overwrite
+   each other's work. Give each run its own clone, jj workspace or git worktree.
+4. Sync: the host has a clone of the repo (a deploy key if it pushes). Copy the control files a
+   run reads to the host before the run (`rsync`), and copy its results back after it.
+5. Seat scripts that run on the host over ssh: raise the open-file limit first
+   (`ulimit -n "$(ulimit -Hn)"`; a plain ssh shell gets 1024), and keep any lock that remote runs
+   take on the host, not on this machine.
+
 ## Accounts
 
 Friends use the operator's own login for each CLI unless the pool has an account:
