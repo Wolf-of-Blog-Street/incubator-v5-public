@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,6 +56,20 @@ const TEST_REGISTRY = [
     component: 'friends',
     path: 'components/friends/tests/accounts.test.mjs',
     desc: 'Credential encryption, masking, and account pool store contracts'
+  },
+  {
+    tier: 1,
+    name: 'proxy-contracts',
+    component: 'proxy',
+    path: 'components/proxy/tests/proxy.test.mjs',
+    desc: 'claude-proxy routing, store and server contracts (pm component)'
+  },
+  {
+    tier: 1,
+    name: 'release-version',
+    component: 'harness',
+    path: 'tools/release.test.mjs',
+    desc: 'Release number fits the change: fleet X.Y.Z, pm-only X.Y.Z.N'
   },
   {
     tier: 1,
@@ -145,7 +160,8 @@ function runTestFile(suite) {
     const start = Date.now();
     const proc = spawn(process.execPath, ['--test', fullPath], {
       cwd: ROOT_DIR,
-      env: { ...process.env, FORCE_COLOR: '1' }
+      // The proxy suite must never touch the live pool: its own home and no background probes.
+      env: { ...process.env, FORCE_COLOR: '1', CLAUDE_PROXY_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-test-')), CLAUDE_PROXY_NO_PROBE: '1' }
     });
 
     let output = '';
@@ -168,7 +184,11 @@ async function main() {
   console.log('  Incubator v5 — Unified Test Suite Runner (Google 3-Tier)');
   console.log('═══════════════════════════════════════════════════════════════\n');
 
+  // A pm component (components.json) is absent from fleet and public trees: its suites do not run there.
+  const scopes = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'components/components.json'), 'utf8')); } catch { return {}; } })();
+  const absentPm = (s) => scopes[s.component] === 'pm' && !fs.existsSync(path.join(ROOT_DIR, 'components', s.component));
   let suitesToRun = TEST_REGISTRY.filter((s) => {
+    if (absentPm(s)) return false;
     if (componentFilter && s.component !== componentFilter) return false;
     if (isAll) return true;
     if (isTier1 && s.tier === 1) return true;

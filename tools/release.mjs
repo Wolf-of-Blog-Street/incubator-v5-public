@@ -11,6 +11,28 @@ const __filename = fileURLToPath(import.meta.url);
 const ROOT_DIR = path.resolve(path.dirname(__filename), '..');
 
 /**
+ * Two release lines. A change to any fleet file is a fleet release, X.Y.Z (every seat installs it).
+ * A change to pm components only (components.json marks them) is a dogfood release, X.Y.Z.N on the
+ * current fleet version: the PM seat installs it with --pm, the fleet does not move.
+ * Returns an error string, or null when the version fits the change.
+ */
+export function checkReleaseVersion(version, lastVersion, changedFiles, scopes) {
+  const pmDirs = Object.keys(scopes).filter(c => scopes[c] === 'pm').map(c => `components/${c}/`);
+  const files = changedFiles.filter(f => f && f !== 'package.json');
+  const pmOnly = files.length > 0 && files.every(f => pmDirs.some(d => f.startsWith(d)));
+  const fleetOf = v => v.split('.').slice(0, 3).join('.');
+  const parts = version.split('.');
+  if (!/^\d+(\.\d+){2,3}$/.test(version)) return `version ${version} is not X.Y.Z or X.Y.Z.N`;
+  if (pmOnly) {
+    if (parts.length !== 4) return `only pm components changed (dogfood): use ${fleetOf(lastVersion)}.N, not ${version}`;
+    if (fleetOf(version) !== fleetOf(lastVersion)) return `a dogfood release stays on the fleet version ${fleetOf(lastVersion)}: use ${fleetOf(lastVersion)}.N`;
+    return null;
+  }
+  if (parts.length === 4) return `fleet files changed (${files.filter(f => !pmDirs.some(d => f.startsWith(d)))[0]}): this is a fleet release, X.Y.Z`;
+  return null;
+}
+
+/**
  * Executes a child process and returns stdout/stderr with execution status.
  */
 async function runStep(title, fn) {
@@ -142,6 +164,16 @@ if (process.argv[1] === __filename) {
       process.exit(1);
     }
 
+    // The version must fit what changed since the last release tag (see checkReleaseVersion).
+    {
+      const { execFileSync } = await import('node:child_process');
+      const g = (a) => execFileSync('git', a, { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+      const lastTag = g(['describe', '--tags', '--abbrev=0', '--match', 'v*']);
+      const changed = g(['diff', '--name-only', lastTag]).split('\n');
+      const scopes = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'components/components.json'), 'utf8'));
+      const err = checkReleaseVersion(version, lastTag.replace(/^v/, ''), changed, scopes);
+      if (err) { console.error(`Error: ${err}`); process.exit(1); }
+    }
     console.log(`Starting release flight for version v${version}...`);
     runTier3Flight().then(async ({ passed }) => {
       if (!passed) {

@@ -81,6 +81,7 @@ function resolveSources() {
       friendsDir: path.join(devRoot, 'components/friends'),
       harnessDir: path.join(devRoot, 'components/harness'),
       viewersDir: path.join(devRoot, 'components/viewers'),
+      componentsDir: path.join(devRoot, 'components'),
       skillsDirs: [path.join(devRoot, 'components/harness/skills'), path.join(devRoot, 'components/brain/skills')]
     };
   }
@@ -100,6 +101,7 @@ function resolveSources() {
     friendsDir: path.join(harnessHome, 'components/friends'),
     harnessDir: path.join(harnessHome, 'components/harness'),
     viewersDir: path.join(harnessHome, 'components/viewers'),
+    componentsDir: path.join(harnessHome, 'components'),
     skillsDirs: [path.join(harnessHome, 'components/harness/skills'), path.join(harnessHome, 'components/brain/skills')]
   };
 }
@@ -111,7 +113,7 @@ function resolveSources() {
  * @param {boolean} [options.initCards] - Whether to create entry AGENTS.md / CLAUDE.md cards
  * @param {Object} [options.env] - Optional key-value pairs for harness/falcon.env
  */
-export async function installHarness({ agentHome, initCards = false, upgradeCards = false, env = null, roster = null, rosterPath = null }) {
+export async function installHarness({ agentHome, initCards = false, upgradeCards = false, pm = false, env = null, roster = null, rosterPath = null }) {
   if (!agentHome) throw new Error('agentHome is required');
 
   const resolvedHome = path.resolve(agentHome);
@@ -229,6 +231,15 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
   guardedCopyDir(sources.friendsDir, path.join(harnessComponentsDir, 'friends'), 'components/friends');
   guardedCopyDir(sources.harnessDir, path.join(harnessComponentsDir, 'harness'), 'components/harness');
   guardedCopyDir(sources.viewersDir, path.join(harnessComponentsDir, 'viewers'), 'components/viewers');
+  // components.json marks each component fleet (every seat) or pm (the PM seat only, installed with --pm).
+  // Never on a fleet seat, never public: a pm component is dogfood.
+  const scopes = (() => { try { return JSON.parse(fs.readFileSync(path.join(sources.componentsDir, 'components.json'), 'utf8')); } catch { return {}; } })();
+  safeCopyFile(path.join(sources.componentsDir, 'components.json'), path.join(harnessComponentsDir, 'components.json'));
+  const pmComponents = pm ? Object.keys(scopes).filter(c => scopes[c] === 'pm' && fs.existsSync(path.join(sources.componentsDir, c))) : [];
+  for (const c of pmComponents) {
+    guardedCopyDir(path.join(sources.componentsDir, c), path.join(harnessComponentsDir, c), `components/${c}`);
+    sources.skillsDirs = [...(sources.skillsDirs || []), path.join(sources.componentsDir, c, 'skills')];
+  }
   // The viewers skill calls harness/tools/viewers/render.mjs; ship the renderer there too.
   guardedCopyDir(sources.viewersDir, path.join(harnessDir, 'tools', 'viewers'), 'tools/viewers');
   if (keptLocal.length) {
@@ -378,6 +389,7 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
   const sourceRevision = resolveSourceRevision(sources.sourceDir);
   const manifestData = {
     harness_version: harnessVersion,
+    pm_components: pmComponents,
     source_revision: sourceRevision,
     installed_at: new Date().toISOString(),
     seat: seatId,
@@ -454,8 +466,9 @@ if (process.argv[1] === __filename) {
   const targetHome = path.resolve(process.argv[2] || '.');
   const initCards = process.argv.includes('--init-cards');
   const upgradeCards = process.argv.includes('--upgrade-cards') || process.argv.includes('--force-cards');
+  const pm = process.argv.includes('--pm');
 
-  await installHarness({ agentHome: targetHome, initCards, upgradeCards });
+  await installHarness({ agentHome: targetHome, initCards, upgradeCards, pm });
   console.log(`✅ Successfully installed Incubator v5 harness into: ${targetHome}/harness`);
 }
 

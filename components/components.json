@@ -1,0 +1,10 @@
+{
+  "board": "fleet",
+  "brain": "fleet",
+  "docs": "fleet",
+  "friends": "fleet",
+  "harness": "fleet",
+  "sweeper": "fleet",
+  "viewers": "fleet",
+  "proxy": "pm"
+}
