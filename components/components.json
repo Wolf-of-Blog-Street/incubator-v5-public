@@ -6,5 +6,6 @@
   "harness": "fleet",
   "sweeper": "fleet",
   "viewers": "fleet",
-  "proxy": "pm"
+  "proxy": "pm",
+  "backup": "pm"
 }

@@ -66,6 +66,13 @@ const TEST_REGISTRY = [
   },
   {
     tier: 1,
+    name: 'backup-contracts',
+    component: 'backup',
+    path: 'components/backup/tests/backup.test.mjs',
+    desc: 'Backup exclude patterns (pm component)'
+  },
+  {
+    tier: 1,
     name: 'release-version',
     component: 'harness',
     path: 'tools/release.test.mjs',

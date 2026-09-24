@@ -290,6 +290,8 @@ node harness/components/board/tools/fleet.mjs list
 
 If a request belongs to another seat, say so and point the operator at that seat. Do not build a parallel version of its work.
 
+**The central brain.** One seat on the roster carries the tag `central-brain`: the operator's personal assistant, and the central memory for everything. Know where it is and what it is: `node harness/components/board/tools/fleet.mjs notes <that seat>` gives its folder. It runs its own brain, not this harness. Never install the harness there, never upgrade it with the fleet, and never write its brain or files unless the operator asks. Read its own CLAUDE.md before you touch it.
+
 ## 6b. Using Another Project's Code or Docs
 
 Every project in the fleet is a GitHub repository, and the operator owns all of them. Nothing stops one seat from building on another project's work:
