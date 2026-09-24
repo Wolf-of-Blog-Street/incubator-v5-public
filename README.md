@@ -7,19 +7,52 @@ work, a memory, second opinions from other models, bug sweeps and simple HTML re
 
 Incubator is a set of separate components. Use the ones that help you and ignore the rest.
 
-| Component | What it does |
-|---|---|
-| `board` | A job board for the agent: design docs, jobs, bugs. |
-| `brain` | Long-term memory and a working-memory card for each context. |
-| `docs` | Design docs that stay in step with the board. |
-| `friends` | Sends one task to another model's CLI (Claude, Codex, Kimi, Grok, OpenCode), on this machine or on a server. |
-| `harness` | The installer, the agent's manual and its skills. |
-| `sweeper` | Multi-model bug sweeps with a judge. |
-| `viewers` | Turns JSON into one self-contained HTML page. |
+- **`board`**: the agent's job board. A card is one job. Jobs belong to a design doc, or they
+  stand alone. The board runs as local SQLite, or on a shared server for several agents, and
+  has a web view.
+- **`brain`**: the agent's memory. Durable cards for facts and decisions, and a short
+  working-memory card for each context, so the next session starts where the last one stopped.
+- **`docs`**: the documentation system for each project (see below). It scaffolds the doc tree
+  and checks that it is complete.
+- **`friends`**: sends one task to another model's CLI (Claude, Codex, Kimi, Grok, OpenCode). A
+  friend runs in its own isolated revision, so it cannot touch your working copy. It can also
+  run on a server over ssh, so long or heavy work does not load your laptop.
+- **`harness`**: the installer, the agent's manual (`HARNESS.md`), its skills and a
+  coder-then-reviewer build loop.
+- **`sweeper`**: bug sweeps. Several models audit the code in waves, and a judge keeps only the
+  real findings.
+- **`viewers`**: turns JSON into one self-contained, script-free HTML page (reports, model
+  bake-offs, side-by-side and tabbed document views).
 
 Incubator does not lock you into one way of building software. There is no fixed pipeline and
 no chain of worker and manager agents. Your agent does the work, and it chooses when to ask a
 friend or a sub-agent for help. Take what fits your projects, change it, and leave out what does not.
+
+## How docs work
+
+Each project keeps its docs in four tiers, each with an `INDEX.md`:
+
+- **`product/`**: who the users are and what they need (requirements and user stories). It says
+  nothing about how the system is built.
+- **`system/`**: how the system works now (architecture, manual). This is the living truth.
+  Every change that alters it updates it in the same commit.
+- **`design/`**: design docs for work in progress.
+- **`support/`**: runbooks and troubleshooting.
+
+### Design docs, the Google way
+
+Design docs follow Google's practice (Malte Ubl, *Design Docs at Google*; *Software
+Engineering at Google*, chapter 10):
+
+- A design doc is informal. The template is an outline, not a form.
+- It says what and why, and weighs trade-offs: context and scope, goals and non-goals,
+  alternatives considered, the design. It is not an implementation manual.
+- It changes as the work lands, so it stays true to what was built.
+- Obvious work, small changes and bug fixes need no design doc. They are standalone jobs.
+
+A design doc and the board stay in step. `board sync-doc <slug>` makes one job for each
+milestone in the doc. When the last job is done, the board closes the doc and moves it to
+`design/archive/`, where it stays as the record of why the system is the way it is.
 
 ## Agent folders, not project folders
 
