@@ -31,7 +31,7 @@ Options:
   --spec <file>      Design doc spec containing intended behavior & user stories
   --story <text>     Explicit user story describing how the component should work
   --deep             Run deep sweep with Astra / Codex advisory
-  --skip-claude      Skip the Claude waves, Fable 5.1 and Opus 5 (Gemini + Codex Astra only)
+  --skip-claude      Skip the Claude waves, Fable 5.1 and Opus 5.5 (Gemini + Codex Astra only)
   --security         Focus on security and auth vulnerabilities
   --effort <level>   Effort level for deep sweeper (low, medium, high)
   --run-dir <dir>    Custom output run directory
@@ -69,7 +69,7 @@ async function main() {
   const priorContext = args.prior ? `## Findings of earlier sweeps, with verdicts\nDo not report these again. Do not re-raise a rejected finding unless you have new proof against its stated reason. Look for what these sweeps missed, and check that each fix is complete.\n\n${fs.readFileSync(args.prior, 'utf8')}` : '';
   
   if (args.deep) {
-    console.log(`\n🛡️ [Deep Sweeper] Gemini baseline + Fable 5.1 (medium) + Opus 5 (xhigh) + Astra (${args.effort}, via Codex)`);
+    console.log(`\n🛡️ [Deep Sweeper] Gemini baseline + Fable 5.1 (medium) + Opus 5.5 (xhigh) + Astra (${args.effort}, via Codex)`);
     console.log(`Target: ${args.target}\n`);
     try {
       const res = await runDeepSweep({

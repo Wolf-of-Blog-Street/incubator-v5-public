@@ -176,7 +176,7 @@ export async function invokeFableFriend({ scopeFiles, storiesContext = '', exist
  * Runs the Multi-Model Deep Sweeper:
  * - Geminis (3.6 / 3.8): Use cases, human simulation, CLI workflows, operational reality
  * - Fable 5.1 Med: Mixture of workflow consistency and code-level edge robustness
- * - Opus 5 XHigh: the same audit brief as Fable, at the highest reasoning effort, for the faults a faster pass misses
+ * - Opus 5.5 XHigh: the same audit brief as Fable, at the highest reasoning effort, for the faults a faster pass misses
  * - Astra High: Deep security, potential data loss, storage invariants, and dangerous bugs
  * - Sane Judge (Gemini 3.8 Flash): Sanity check / reality filter across all candidates
  */
@@ -244,27 +244,27 @@ ${existingFindings.map((b, i) => `${i + 1}. **${b.id || `EXISTING-${i + 1}`}**: 
     console.log(`  2. Fable 5.1 Wave: Skipped (operator instruction).`);
   }
 
-  // Opus 5 at xhigh effort: same brief as the Fable wave, a second Claude at full depth.
+  // Opus 5.5 at xhigh effort: same brief as the Fable wave, a second Claude at full depth.
   let opusFindings = [];
   let opusResult = { parsed: { findings: [] }, duration_ms: 0 };
   if (!skipClaude) {
     try {
-      console.log(`  2b. Opus 5 Wave (claude-opus-5 @ xhigh - Deep Workflow & Edge Audit)...`);
+      console.log(`  2b. Opus 5.5 Wave (claude-opus-5-5 @ xhigh - Deep Workflow & Edge Audit)...`);
       opusResult = await invokeFableFriend({
         scopeFiles: baseline.scopeFiles,
         storiesContext: baseline.storiesContext,
         outputDir,
         effort: 'xhigh',
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
         label: 'opus',
-        auditor: 'claude-opus-5-xhigh',
+        auditor: 'claude-opus-5-5-xhigh',
         timeout: 1800000 // 30 minutes: xhigh thinks long
       });
       opusFindings = opusResult.parsed?.findings || [];
-      console.log(`     → Opus 5 finished in ${(opusResult.duration_ms / 1000).toFixed(1)}s. Surfaced ${opusFindings.length} finding(s).`);
+      console.log(`     → Opus 5.5 finished in ${(opusResult.duration_ms / 1000).toFixed(1)}s. Surfaced ${opusFindings.length} finding(s).`);
     } catch (err) {
       opusResult.skipped = String(err.message || err).split('\n')[0];
-      console.log(`     ⚠️ Opus 5 skipped (${err.message}). Continuing with Astra and Gemini.`);
+      console.log(`     ⚠️ Opus 5.5 skipped (${err.message}). Continuing with Astra and Gemini.`);
     }
   } else {
     opusResult.skipped = 'operator instruction (--skip-claude)';
@@ -288,12 +288,12 @@ ${existingFindings.map((b, i) => `${i + 1}. **${b.id || `EXISTING-${i + 1}`}**: 
   console.log(`     → Astra High finished in ${(astraResult.duration_ms / 1000).toFixed(1)}s. Surfaced ${astraFindings.length} deep finding(s).`);
 
   // Step 4: Synthesize All Findings for the Sane Judge
-  console.log(`\n⚖️ [Sane Judge] Adjudicating All Findings Across Gemini, Fable 5.1, Opus 5, and Astra...`);
+  console.log(`\n⚖️ [Sane Judge] Adjudicating All Findings Across Gemini, Fable 5.1, Opus 5.5, and Astra...`);
   const allCandidateFindings = [
     ...(baseline.wave1?.findings || []).map(f => ({ ...f, source: 'gemini-3.6' })),
     ...(baseline.wave2?.findings || []).map(f => ({ ...f, source: 'gemini-3.8' })),
     ...fableFindings.map(f => ({ ...f, source: 'claude-fable-5-1' })),
-    ...opusFindings.map(f => ({ ...f, source: 'claude-opus-5' })),
+    ...opusFindings.map(f => ({ ...f, source: 'claude-opus-5-5' })),
     ...astraFindings.map(f => ({ ...f, source: 'gpt-6-astra' }))
   ];
 
@@ -339,10 +339,10 @@ ${existingFindings.map((b, i) => `${i + 1}. **${b.id || `EXISTING-${i + 1}`}**: 
 
   // Generate Synthesized Report
   const reportLines = [];
-  reportLines.push(`# 🛡️ Multi-Model Deep Sweeper Report (Gemini + Fable 5.1 + Opus 5 + Astra)`);
+  reportLines.push(`# 🛡️ Multi-Model Deep Sweeper Report (Gemini + Fable 5.1 + Opus 5.5 + Astra)`);
   reportLines.push(`- **Sweep ID**: \`${sweepId}\``);
   reportLines.push(`- **Target**: \`${target}\``);
-  reportLines.push(`- **Sweepers**: Gemini 3.6 (Story), Gemini 3.8 (Operational), Fable 5.1 Med (Mixture), Opus 5 XHigh (Deep Mixture), Astra High (Security/Invariants)`);
+  reportLines.push(`- **Sweepers**: Gemini 3.6 (Story), Gemini 3.8 (Operational), Fable 5.1 Med (Mixture), Opus 5.5 XHigh (Deep Mixture), Astra High (Security/Invariants)`);
   reportLines.push(`- **Total Candidate Findings**: ${allCandidateFindings.length}`);
   reportLines.push('');
   reportLines.push('---');
@@ -352,7 +352,7 @@ ${existingFindings.map((b, i) => `${i + 1}. **${b.id || `EXISTING-${i + 1}`}**: 
   reportLines.push(`- **Gemini 3.6 (Story Walkthrough)**: ${baseline.wave1?.findings?.length || 0} candidate(s)`);
   reportLines.push(`- **Gemini 3.8 (Operational Reality)**: ${baseline.wave2?.findings?.length || 0} candidate(s)`);
   reportLines.push(`- **Fable 5.1 Med (Workflow & Edge Mixture)**: ${fableFindings.length} candidate(s)${fableResult.skipped ? ` — ⚠️ SKIPPED: ${fableResult.skipped}` : ''}`);
-  reportLines.push(`- **Opus 5 XHigh (Deep Workflow & Edge Audit)**: ${opusFindings.length} candidate(s)${opusResult.skipped ? ` — ⚠️ SKIPPED: ${opusResult.skipped}` : ''}`);
+  reportLines.push(`- **Opus 5.5 XHigh (Deep Workflow & Edge Audit)**: ${opusFindings.length} candidate(s)${opusResult.skipped ? ` — ⚠️ SKIPPED: ${opusResult.skipped}` : ''}`);
   reportLines.push(`- **Astra High (Security & Data Loss)**: ${astraFindings.length} candidate(s)${astraResult.skipped ? ` — ⚠️ SKIPPED: ${astraResult.skipped}` : ''}`);
   reportLines.push('');
 

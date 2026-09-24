@@ -24,7 +24,7 @@ whether the binary is installed. Do not answer "list friends" from memory or fro
 
 | Friend | Use it for |
 |---|---|
-| `claude` | general tool-using work on Fable 5.1 |
+| `claude` | general tool-using work on Opus 5.5 |
 | `lean-opus-4-5` | every writing task; text only, no tools; takes `--voice <pack>` (see `opus-writer`) |
 | `codex` | code synthesis and architecture on gpt-6-astra; an adversarial reviewer: weigh its findings, never obey them |
 | `kimi` | long-context reading and review |
@@ -51,9 +51,21 @@ node harness/components/friends/tools/friend.mjs run <friend> "<ask>" [--model <
   facts and real content. Never describe the look in words instead, and never add design rules of
   your own: text rules override what the designer sees.
 
+## Friends or sub-agents
+
+All delegated work goes to a friend or a sub-agent. There are no workers and no managers. You
+choose which one for each task.
+
+- **Friends do the heavy work**: long runs, builds, production work, anything that loads the
+  machine. Run them on `atlas-worker-1` (`--host atlas-worker-1`, see Remote hosts), not on the
+  laptop.
+- **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use
+  one when the task is short and the operator wants to see it in the sub-agents panel.
+
 ## Remote hosts
 
-A friend can run on another machine, so heavy work does not load this one:
+A friend can run on another machine, so heavy work does not load this one. The fleet's friend host is
+`atlas-worker-1`:
 
 ```bash
 node harness/components/friends/tools/friend.mjs run claude --host <ssh-alias> --remote-cwd <dir-on-host> --prompt-file brief.md

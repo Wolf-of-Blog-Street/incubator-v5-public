@@ -278,7 +278,7 @@ export async function handleRemoteCommand(command, parsed, remote, loadInstaller
         : [{ id: 'default', name: `${agentId} Workspace` }];
       const tags = parsed.flags.tags
         ? parsed.flags.tags.split(',').map(t => t.trim())
-        : ['worker'];
+        : [];
 
       const payload = {
         id: agentId,

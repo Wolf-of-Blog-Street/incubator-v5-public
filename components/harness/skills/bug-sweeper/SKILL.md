@@ -13,7 +13,7 @@ The full teaching is HARNESS.md section 10. This card is the short form.
 
 ## Words
 - **Wave**: one model pass. Wave 1 breadth (`gemini-3.6-flash`), wave 2 depth (`gemini-3.8-flash`), wave 3 generated tests that run (`gemini-3.7-flash`), then the judge (`gemini-3.8-flash`).
-- **Sweep**: one full run, three waves and the judge. A **deep sweep** (`--deep`) adds Claude Fable 5.1 (medium effort), Claude Opus 5 (`xhigh` effort, up to 30 minutes) and Codex `gpt-6-astra` (high effort) to the Gemini baseline, then one judge over all findings. `--skip-claude` drops both Claude passes.
+- **Sweep**: one full run, three waves and the judge. A **deep sweep** (`--deep`) adds Claude Fable 5.1 (medium effort), Claude Opus 5.5 (`xhigh` effort, up to 30 minutes) and Codex `gpt-6-astra` (high effort) to the Gemini baseline, then one judge over all findings. `--skip-claude` drops both Claude passes.
 - **Ledger**: `.runs/sweeps/<target-slug>/ledger.md`. One per target. Every sweep reads it through `--prior`, standard and deep alike.
 
 ## Run

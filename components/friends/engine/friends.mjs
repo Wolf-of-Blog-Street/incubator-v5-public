@@ -59,7 +59,7 @@ export const DEFAULT_FRIENDS_CATALOG = {
     stdinPrompt: true,
     modelFlag: '--model',
     effortFlag: null,
-    defaultModel: 'claude-fable-5-1',
+    defaultModel: 'claude-opus-5-5',
     defaultEffort: 'high',
     defaultFlags: ['--dangerously-skip-permissions'],
     modelAliases: {

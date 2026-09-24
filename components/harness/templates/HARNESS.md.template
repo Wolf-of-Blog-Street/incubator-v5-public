@@ -372,7 +372,7 @@ A design doc follows Google's engineering culture (Ubl, *Design Docs at Google*;
 - **It says what and why, and weighs trade-offs**: Context and scope, goals and non-goals, design, alternatives considered, anything cross-cutting like security or data. Sketches of APIs and data, not full definitions. No pseudo-code, no step lists. If it starts to read like an implementation manual, stop.
 - **It is updated while work lands**: Reality corrects the proposal. When the last job is done, it closes and stays in the archive as the record of why.
 - **Do not write one for obvious work**: Obvious work, small tweaks, and bug fixes use a standalone job or direct code. Work is work.
-- **The doc owns the shape; the worker owns the build**: Plan and code in whatever order and size works.
+- **The doc owns the shape; the coder owns the build**: Plan and code in whatever order and size works.
 
 ### 8.4 Job Vocabulary
 - A card on the board is a **job** (or task).
@@ -433,10 +433,15 @@ One job, only the files the card lists plus their tests, never an invented name,
 
 ## 9. Friends Engine (`components/friends`)
 
-The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Codex, Kimi) to perform sub-agent delegation, secondary code reviews, and adversarial audits inside isolated Jujutsu child revisions.
+The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Codex, Kimi) for builds, secondary code reviews and adversarial audits, inside isolated Jujutsu child revisions or on a remote host.
+
+### Friends or Sub-agents
+All delegated work goes to a friend or a sub-agent. There are no workers and no managers. The agent chooses per task.
+- **Friends do the heavy work**: long runs, builds, production work, anything that loads the machine. Run them on `atlas-worker-1` (`--host atlas-worker-1 --remote-cwd <dir>`), not on the laptop. The `friends` skill has the host rules.
+- **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use one when the task is short and the operator wants to see it in the sub-agents panel.
 
 ### Supported Friends & Models
-- **Claude (`claude`)**: Anthropic Claude Code CLI (`claude-fable-5-1`, `claude-opus-4-8`).
+- **Claude (`claude`)**: Anthropic Claude Code CLI (default `claude-opus-5-5`; Fable 5.1 runs only in the bug sweeper).
 - **Lean Opus 4.5 (`lean-opus-4-5`)**: the `claude` CLI pinned to `claude-opus-4-5` with `--strict-mcp-config` (zero MCP servers). The writing model.
 - **Codex (`codex`)**: OpenAI Codex CLI (`gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.5`).
 - **Kimi (`kimi`)**: Moonshot Kimi Code CLI (`kimi-k3`).
@@ -496,12 +501,12 @@ node harness/components/sweeper/tools/sweep.mjs --target workspaces/incubator-v5
 When the **`--deep`** flag is passed, the sweeper escalates into a multi-model heterogeneous audit pipeline:
 1. **Gemini Fast Baseline**: Generates scope, story context, and initial operational reality scans.
 2. **Claude Fable 5.1 (`claude-fable-5-1`)**: Analyzes real-world workflow consistency, edge cases, and ergonomic failure scenarios.
-3. **Claude Opus 5 (`claude-opus-5`, `xhigh` effort)**: The same brief as Fable at the highest reasoning effort, for the faults a faster pass misses. It can take up to 30 minutes.
+3. **Claude Opus 5.5 (`claude-opus-5-5`, `xhigh` effort)**: The same brief as Fable at the highest reasoning effort, for the faults a faster pass misses. It can take up to 30 minutes.
 4. **Codex Astra High (`gpt-6-astra`)**: Deep reasoning sweep focused strictly on security holes, tenant boundary breaches, data loss, and storage invariant violations.
 5. **Sane Judge**: Cross-model synthesis, dynamic test execution, and final unified verdict in `.runs/<sweep-id>/deep-summary.md`.
 
 ```bash
-# Run deep multi-model sweep (Gemini + Fable 5.1 + Opus 5 xhigh + Astra High)
+# Run deep multi-model sweep (Gemini + Fable 5.1 + Opus 5.5 xhigh + Astra High)
 node harness/components/sweeper/tools/sweep.mjs --target workspaces/incubator-v5/components/board --spec workspaces/incubator-v5/docs/design/board.md --deep
 
 # Optional controls
