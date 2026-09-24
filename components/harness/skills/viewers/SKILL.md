@@ -20,6 +20,7 @@ The tool ships on every v4 seat under the seat's harness:
 | report, review, findings, sections of notes/tables/lists | `report` |
 | model bake-off runs: regressions, consistency, DNFs | `bakeoff` |
 | compare two documents: a rewrite against its source | `sidebyside` — markdown rendered formatted, old left, new right, highlight terms with per-pane hit counts |
+| several documents, one at a time: model outputs on the same input | `tabs` — markdown rendered formatted, the TOC is the tab bar |
 
 Pages are full width with no sidebar. A report gets the sticky numbered TOC only with
 `"toc": true` at the top level of its data; leave it off on a laptop.

@@ -45,11 +45,13 @@ export function renderProjectSwitcherMenu() {
 
   const item = proj => {
     const isSelected = proj.id === state.activeProjectId;
-    const pct = (proj.stats || {}).progressPct ?? 0;
+    // Jobs done out of all jobs, closed docs included; the board itself shows only open docs.
+    const st = proj.stats || {};
+    const badge = st.totalTasks ? `${st.doneTasks}/${st.totalTasks}` : 'no jobs';
     return `
       <button type="button" class="project-menu-item ${isSelected ? 'active' : ''}" data-project-id="${escapeHtml(proj.id)}" role="menuitem">
         <span class="project-menu-title">${escapeHtml(proj.name || proj.id)}</span>
-        <span class="project-menu-badge">${pct}%</span>
+        <span class="project-menu-badge" title="jobs done / all jobs, closed docs included">${badge}</span>
       </button>
     `;
   };

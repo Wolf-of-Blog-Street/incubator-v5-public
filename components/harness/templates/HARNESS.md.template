@@ -450,7 +450,7 @@ All delegated work goes to a friend or a sub-agent. There are no workers and no 
 
 ### Viewers (`harness/tools/viewers`)
 Operator-facing HTML pages come from the shipped templates, never freestyled:
-`node harness/tools/viewers/render.mjs --list` (bakeoff, report, sidebyside), then
+`node harness/tools/viewers/render.mjs --list` (bakeoff, report, sidebyside, tabs), then
 `node harness/tools/viewers/render.mjs <template> <data.json> -o <out.html>`. Themed dark1, one
 self-contained file, opened as file://. The `viewers` skill has the data shapes.
 

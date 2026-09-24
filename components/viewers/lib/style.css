@@ -636,3 +636,9 @@ tbody tr:hover { background: var(--panel2); }
 @media print {
   .table-wrap { left: 0; transform: none; width: 100%; max-width: 100%; }
 }
+
+/* ---- tabs template: :target shows one tab; none targeted shows the first ---- */
+.tabs > .tab { display: none; }
+.tabs > .tab:target { display: block; }
+.tabs:not(:has(> .tab:target)) > .tab:first-child { display: block; }
+.tab-doc { max-width: 1100px; }

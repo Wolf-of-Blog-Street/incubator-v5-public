@@ -24,8 +24,9 @@ import { renderPage, THEMES } from "./lib/page.mjs";
 import * as bakeoff from "./templates/bakeoff.mjs";
 import * as report from "./templates/report.mjs";
 import * as sidebyside from "./templates/sidebyside.mjs";
+import * as tabs from "./templates/tabs.mjs";
 
-const TEMPLATES = new Map([bakeoff, report, sidebyside].map((template) => [template.name, template]));
+const TEMPLATES = new Map([bakeoff, report, sidebyside, tabs].map((template) => [template.name, template]));
 
 function usage(out) {
   const lines = [

@@ -45,6 +45,7 @@ one DNF run — all in the first table.
 | `bakeoff` | model bake-off runs: who regressed, who was consistent, who did not finish | one row per run |
 | `report` | anything sectioned: notes, key/values, tables, lists, code blocks | titled sections |
 | `sidebyside` | document review: a rewrite against its source, old left, new right | two documents plus optional highlight terms |
+| `tabs` | several markdown documents, one shown at a time: model outputs on the same input | one entry per tab |
 
 ### bakeoff
 
@@ -130,6 +131,19 @@ badge text. Table rows are arrays, or objects keyed by column name. Every value 
 table cells, list items — uses one grammar: scalars render as text; `{ "code": "..." }`
 renders monospace; `{ "badge": "ok|warn|bad|neutral", "text": "..." }` renders a status
 badge; anything else renders as its JSON.
+
+### tabs
+
+Several markdown documents, one shown at a time. The TOC is the tab bar: each label links to
+its tab, and CSS `:target` shows that tab alone. With no tab targeted, the first tab shows. No
+scripts. The markdown renders formatted through `lib/md.mjs`, the same as `sidebyside`.
+
+```json
+{
+  "title": "brief — three models",
+  "tabs": [ { "title": "opus55", "meta": "$1.20 · 239k in", "text": "..." }, { "title": "codex", "text": "..." } ]
+}
+```
 
 ### sidebyside
 
