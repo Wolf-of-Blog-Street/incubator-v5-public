@@ -463,7 +463,12 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
 
 // CLI Mode
 if (process.argv[1] === __filename) {
-  const targetHome = path.resolve(process.argv[2] || '.');
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log('usage: node install.mjs <seat folder> [--pm] [--init-cards] [--upgrade-cards]\n  --pm  also install pm components (components.json): the PM seat only');
+    process.exit(0);
+  }
+  // The target is the first argument that is not a flag: "--help" or "--pm" is never a folder.
+  const targetHome = path.resolve(process.argv.slice(2).find(a => !a.startsWith('-')) || '.');
   const initCards = process.argv.includes('--init-cards');
   const upgradeCards = process.argv.includes('--upgrade-cards') || process.argv.includes('--force-cards');
   const pm = process.argv.includes('--pm');
