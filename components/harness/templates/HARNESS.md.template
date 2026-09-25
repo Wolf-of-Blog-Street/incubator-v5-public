@@ -429,6 +429,18 @@ One job, only the files the card lists plus their tests, never an invented name,
 - **One writer to main at a time, and every writer takes the lock.** A doc commit that moves main during a job's merge check makes the merge fail. Doc commits and hotfixes go through `main-push.sh`, which takes the same lock.
 - The lock is a folder. Its `owner` file names the owner and its pid. When a run is killed inside the merge script, its lock stays behind; the next caller sees that the pid is dead and clears it. To clear one by hand: read `owner`, confirm with `kill -0 <pid>` that the process is gone, then remove the lock folder.
 
+### A second orchestrator
+A second orchestrator (for example a Codex agent in another cmux surface) can work the same loop beside the lead. `SendMessage` reaches only Claude sessions, so the two talk through a file and cmux.
+- **The coordination file is the channel** (for example `<loop>/astra-coordination.md`). It has three parts:
+  - **Your jobs**: the job IDs reserved for the second orchestrator. The lead takes them out of the loop's queue first, so the two never take the same job.
+  - **Rules**: heavy work runs on forge-1; its workspaces are named `ws/<name>-<id>`; it uses its own test port range; it ships only through `merge.sh` and its lock; only the lead deploys and closes the board. It may draft a ruling for a BLOCKED job (`runs/<id>-review-notes-draft.md`), but it never relaunches or re-queues a loop job.
+  - **Messages**: one line per message, starting `lead:` or `<name>:`, appended at the end. The lead reads the file on every loop tick. When the other side works on the build host, rsync the file there.
+- **A cmux message only says "read the file"**; the content goes in the file. Start it with a sender tag, for example `[Wolf Den lead] read astra-coordination.md`.
+  1. `cmux send --workspace <ws> --surface <surface> "<text>"`
+  2. Wait about 2 seconds, then `cmux send-key --workspace <ws> --surface <surface> <key>`. Key names are lowercase: `enter` works, `Enter` does nothing. When the target is busy (Codex shows "tab to queue message"), send `tab` to queue the text for its next turn; when it is idle, send `enter`.
+  3. A key that arrives before the text shows is lost. Check with `cmux read-screen --workspace <ws> --surface <surface> --lines 8`, and send the key again if the text is still in the input box.
+- `merge.sh` forgets the job's own workspace by its name, so a workspace named `astra-<id>` ships the same way as `job<id>`.
+
 ---
 
 ## 9. Friends Engine (`components/friends`)

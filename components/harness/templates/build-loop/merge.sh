@@ -15,6 +15,8 @@ WS=$WS_DIR/$JOB; LOCK=${LOCK:-$WS_DIR/.merge-lock}; LOGS=${LOGS:-$WS_DIR/../runs
 . "$(dirname "$0")/lock.sh"; take_lock "job-$JOB"
 cd "$WS"
 CH=$(jj log --no-graph -r @ -T 'change_id.short()')
+# The workspace's own name, whatever it is (job<id>, astra-<id>, ...). ponytail: the first name if two workspaces share @.
+WSNAME=$(jj log --no-graph -r @ -T 'working_copies' | sed 's/@.*//; s/ .*//')
 jj describe -m "$MSG" >/dev/null
 jj rebase -d main >/dev/null 2>&1 || { echo "REBASE CONFLICT for job $JOB"; jj st | head -20; exit 2; }
 [ "$(jj log --no-graph -r @ -T 'if(conflict, "C", "")')" = "C" ] && { echo "REBASE CONFLICT for job $JOB: resolve it in the workspace, then run merge.sh again"; jj st | head -20; exit 2; }
@@ -25,4 +27,4 @@ jj bookmark set main -r "$CH" >/dev/null
 cd "$REPO"; jj new main >/dev/null 2>&1 || true; jj workspace update-stale >/dev/null 2>&1 || true
 jj git push --bookmark main 2>&1 | tail -1
 (cd "$SEAT_ROOT" && node harness/components/board/tools/board.mjs set "$JOB" --status done ${PROJECT:+--project "$PROJECT"} 2>&1 | tail -1)
-jj workspace forget "job$JOB" >/dev/null 2>&1 && echo "workspace job$JOB forgotten" || true
+jj workspace forget "$WSNAME" >/dev/null 2>&1 && echo "workspace $WSNAME forgotten" || true
