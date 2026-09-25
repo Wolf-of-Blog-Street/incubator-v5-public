@@ -426,6 +426,8 @@ One job, only the files the card lists plus their tests, never an invented name,
 
 ### The merge script and the lock
 `merge.sh` is the only way a job reaches main. It takes the lock, rebases the job onto main, runs the full check on the **rebased** revision in the job's workspace, and only when that check passes it moves main, pushes, closes the board job and forgets the workspace. On a conflict or a failed check it exits non-zero with the output, and main has not moved.
+- **CHANGELOG races resolve themselves.** Parallel merges all add lines under `## Unreleased`. When the only conflict is `CHANGELOG.md` and the job's lines end in `[<job>]`, `merge.sh` takes main's file and puts the job's lines back into their groups (`cl-resolve.py`). Any other conflict still stops the merge.
+- **Migration numbers are checked on the rebased tree.** Two parallel jobs can take the same number, and each job's own check passes. Set `MIGRATION_DIRS` (the numbered migration folders) and `merge.sh` stops before main moves when two migrations share a number.
 - **One writer to main at a time, and every writer takes the lock.** A doc commit that moves main during a job's merge check makes the merge fail. Doc commits and hotfixes go through `main-push.sh`, which takes the same lock.
 - The lock is a folder. Its `owner` file names the owner and its pid. When a run is killed inside the merge script, its lock stays behind; the next caller sees that the pid is dead and clears it. To clear one by hand: read `owner`, confirm with `kill -0 <pid>` that the process is gone, then remove the lock folder.
 
