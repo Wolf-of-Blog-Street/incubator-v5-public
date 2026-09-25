@@ -200,7 +200,7 @@ describe('Friends Engine — remote runs', async () => {
   test('remote invocation: prompt and secrets go over stdin, never argv', () => {
     const inv = buildRemoteInvocation('claude', {
       host: 'box', remoteCwd: "/w/it's", prompt: 'do $x', systemPrompt: 'be brief', runId: 'r1'
-    }, { CLAUDE_CODE_OAUTH_TOKEN: 'tok-123' });
+    }, { CLAUDE_CODE_OAUTH_TOKEN: 'tok-123' }, { allowedHosts: null });
     const cmd = inv.sshArgs.at(-1);
     assert.equal(inv.sshArgs.at(-2), 'box');
     assert.ok(!cmd.includes('tok-123') && !cmd.includes('be brief') && !cmd.includes('do $x'), 'no secret or prompt in argv');
@@ -209,8 +209,13 @@ describe('Friends Engine — remote runs', async () => {
   });
 
   test('remote invocation refuses a friend without a stdin prompt, and a missing --remote-cwd', () => {
-    assert.throws(() => buildRemoteInvocation('codex', { host: 'b', remoteCwd: '/w', prompt: 'x' }, {}), /stdin prompt/);
-    assert.throws(() => buildRemoteInvocation('claude', { host: 'b', prompt: 'x' }, {}), /remote-cwd/);
+    assert.throws(() => buildRemoteInvocation('codex', { host: 'b', remoteCwd: '/w', prompt: 'x' }, {}, { allowedHosts: null }), /stdin prompt/);
+    assert.throws(() => buildRemoteInvocation('claude', { host: 'b', prompt: 'x' }, {}, { allowedHosts: null }), /remote-cwd/);
+  });
+
+  test('remote invocation goes only to the hosts in the remote-hosts file', () => {
+    assert.throws(() => buildRemoteInvocation('claude', { host: 'other', remoteCwd: '/w', prompt: 'x' }, {}, { allowedHosts: ['forge-1'] }), /not in/);
+    assert.equal(buildRemoteInvocation('claude', { host: 'forge-1', remoteCwd: '/w', prompt: 'x' }, {}, { allowedHosts: ['forge-1'] }).sshArgs.at(-2), 'forge-1');
   });
 
   test('a green run that prints 429 or 401 is not a rate limit or a revoked login', async () => {

@@ -653,6 +653,13 @@ export function shellQuote(word) {
   return `'${String(word).replace(/'/g, `'\\''`)}'`;
 }
 
+/** One ssh alias per line. When the file exists, remote runs go only to the hosts it lists. */
+export const REMOTE_HOSTS_FILE = path.join(os.homedir(), '.config', 'incubator', 'remote-hosts');
+
+function readRemoteHosts() {
+  try { return fs.readFileSync(REMOTE_HOSTS_FILE, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')); } catch { return null; }
+}
+
 /** Auth variables a remote run forwards from the local environment (over stdin, never argv). */
 export const REMOTE_AUTH_VARS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'MOONSHOT_API_KEY', 'XAI_API_KEY'];
 
@@ -687,7 +694,7 @@ exit "$rc"`;
  * Builds the ssh argv and the stdin for a remote run. Pure: no I/O, so it is tested directly.
  * @returns {{ sshArgs: string[], input: string, runId: string, remoteCwd: string }}
  */
-export function buildRemoteInvocation(friendId, options = {}, env = process.env) {
+export function buildRemoteInvocation(friendId, options = {}, env = process.env, { allowedHosts = readRemoteHosts() } = {}) {
   const catalog = getFriendsCatalog(options.configPath);
   const provider = catalog[friendId];
   if (!provider) throw new Error(`Unknown friend provider "${friendId}"`);
@@ -698,6 +705,9 @@ export function buildRemoteInvocation(friendId, options = {}, env = process.env)
 
   const { binary, args } = resolveFriendCommand(friendId, { ...options, prompt: null, systemPrompt: null });
   if (provider.promptFlag) args.push(provider.promptFlag);
+  if (allowedHosts && !allowedHosts.includes(options.host)) {
+    throw new Error(`Host "${options.host}" is not in ${REMOTE_HOSTS_FILE}: remote runs go only to ${allowedHosts.join(', ') || 'no host'}`);
+  }
 
   const auth = REMOTE_AUTH_VARS.filter(v => env[v]).map(v => {
     if (/[\r\n]/.test(env[v])) throw new Error(`${v} holds a line break: refusing to forward it`);

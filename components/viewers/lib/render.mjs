@@ -71,6 +71,13 @@ function flattenChildren(list, out) {
   return out;
 }
 
+// A link to one of the page's own tabs or sections: the target is code-minted
+// (#s-00, #s-01, ...) from a number, so data never reaches an href.
+export function tabLink(index, ...children) {
+  const n = Number.isInteger(index) && index >= 0 && index < 100 ? index : 0;
+  return { tag: "a", attrs: { href: `#s-${String(n).padStart(2, "0")}`, class: "tab-link" }, children: flattenChildren(children, []) };
+}
+
 export function renderToHtml(node) {
   if (node === null || node === undefined || node === false || node === "") return "";
   if (Array.isArray(node)) return node.map(renderToHtml).join("");

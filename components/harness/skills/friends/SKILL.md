@@ -57,15 +57,19 @@ All delegated work goes to a friend or a sub-agent. There are no workers and no 
 choose which one for each task.
 
 - **Friends do the heavy work**: long runs, builds, production work, anything that loads the
-  machine. Run them on `atlas-worker-1` (`--host atlas-worker-1`, see Remote hosts), not on the
-  laptop.
+  machine. Run them on `forge-1` (`--host forge-1`, see Remote hosts), never on a
+  laptop. Builds, test runs, sweeps and headless browsers go there too. forge-1 runs no servers.
 - **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use
   one when the task is short and the operator wants to see it in the sub-agents panel.
 
 ## Remote hosts
 
-A friend can run on another machine, so heavy work does not load this one. The fleet's friend host is
-`atlas-worker-1`:
+**Hard rule:** Claude runs only on the laptop or on `forge-1`, never on any other host. A remote
+run goes only to a host listed in `~/.config/incubator/remote-hosts`; the engine refuses any other.
+If another machine ever needs Claude, tunnel its traffic out through forge-1.
+
+A friend can run on another machine, so heavy work does not load this one. The fleet's CPU host is
+`forge-1`:
 
 ```bash
 node harness/components/friends/tools/friend.mjs run claude --host <ssh-alias> --remote-cwd <dir-on-host> --prompt-file brief.md

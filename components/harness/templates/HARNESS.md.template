@@ -435,9 +435,14 @@ One job, only the files the card lists plus their tests, never an invented name,
 
 The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Codex, Kimi) for builds, secondary code reviews and adversarial audits, inside isolated Jujutsu child revisions or on a remote host.
 
+### Hard Rule: Claude Code Runs Only on the Laptop or forge-1
+Claude Code (every seat, every friend, every sweep, every browser-testing agent) runs **only** on the laptop or on `forge-1`. Never on any other host, VM or container. Claude traffic from other machines looks like extra users to Anthropic. The friends engine enforces it: a remote run goes only to a host listed in `~/.config/incubator/remote-hosts` (today: `forge-1`). If another machine ever needs Claude, its traffic goes out through a tunnel to forge-1, never from its own IP.
+
 ### Friends or Sub-agents
 All delegated work goes to a friend or a sub-agent. There are no workers and no managers. The agent chooses per task.
-- **Friends do the heavy work**: long runs, builds, production work, anything that loads the machine. Run them on `atlas-worker-1` (`--host atlas-worker-1 --remote-cwd <dir>`), not on the laptop. The `friends` skill has the host rules.
+- **Friends do the heavy work**: long runs, builds, production work, anything that loads the machine. Run them on `forge-1` (`--host forge-1 --remote-cwd <dir>`), not on the laptop. The `friends` skill has the host rules.
+- **forge-1 does all heavy CPU work**: agents, builds, test runs, sweeps, headless browsers. Never on a laptop. forge-1 runs no servers: do not start or add a server there.
+- **Browser-testing agents** (UX sweeps: many agents, each driving a dev app in headless Camoufox) run on `claude-opus-5-5` at medium effort, on forge-1. Not Sonnet: it stops early and does too little real work.
 - **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use one when the task is short and the operator wants to see it in the sub-agents panel.
 
 ### Supported Friends & Models
