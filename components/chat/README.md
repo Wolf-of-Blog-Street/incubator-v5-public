@@ -22,7 +22,9 @@ node harness/components/chat/chat.mjs mcp                 # MCP tools: chat_send
 ## The context watch
 
 The bridge reads every Claude session's context from its transcript every 30 s: the input side of its last
-turn. The session-start hook registers the transcript path. Past the session's limit, the bridge asks it
+turn. The session-start hook registers the transcript path. For a session that registered without one (it
+started before the hook sent it), the bridge finds it every 5 minutes from Claude Code's own record of the
+process in that tab, `~/.claude/sessions/<pid>.json`, which follows a `/clear`. Past the session's limit, the bridge asks it
 to self-kickoff. The session hands in its resume prompt (`chat kickoff --file <resume.md>`). When its turn
 ends, the bridge sends `/clear` (`/new` for Codex), then tells the fresh session where the prompt is. The
 old transcript is never measured again, so the watch resets by itself.

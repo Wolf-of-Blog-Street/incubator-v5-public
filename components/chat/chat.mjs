@@ -194,7 +194,7 @@ export async function bridge(port = PORT) {
 }
 
 const log = t => console.log(`${new Date().toTimeString().slice(0, 8)}  ${t}`);
-const run = (cmd, args, timeout = 180000) => new Promise(res => execFile(cmd, args, { timeout }, (err, out) => res({ ok: !err, out: String(out || err?.message || '') })));
+const run = (cmd, args, timeout = 180000) => new Promise(res => execFile(cmd, args, { timeout, maxBuffer: 64e6 }, (err, out) => res({ ok: !err, out: String(out || err?.message || '') })));
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 /** The last 2 MB of a transcript: enough to hold its last turn. */
 function tail(file) {
@@ -203,6 +203,30 @@ function tail(file) {
 /** A tab is busy while its agent works: Claude Code and Codex both show "esc to interrupt". */
 const busy = async s => { const r = await run('cmux', ['read-screen', '--workspace', s.workspace, '--surface', s.surface, '--lines', '15'], 10000); return !r.ok || /esc to interrupt/i.test(r.out); };
 async function idle(s, maxMs) { for (const end = Date.now() + maxMs; Date.now() < end; await sleep(5000)) if (!(await busy(s))) { await sleep(3000); if (!(await busy(s))) return true; } return false; }
+
+/**
+ * The transcripts of Claude sessions that registered before the hook sent one (sessions started before
+ * v5.9.23): the claude process in the session's tab (its parent is a shell, not a friend's node), then
+ * Claude Code's own record of that process, ~/.claude/sessions/<pid>.json, which holds the live session id
+ * (a /clear updates it) and the folder the session started in.
+ */
+export async function findTranscripts(sessions) {
+  const want = new Map(sessions.filter(s => s.type === 'claude' && s.surface && !s.transcript).map(s => [s.surface, s]));
+  if (!want.size) return [];
+  const ps = await run('ps', ['axeww', '-o', 'pid=,ppid=,command='], 20000);
+  const procs = ps.out.split('\n').map(l => l.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean).map(m => ({ pid: m[1], ppid: m[2], cmd: m[3] }));
+  const byPid = new Map(procs.map(p => [p.pid, p]));
+  const found = [];
+  for (const p of procs) {
+    const surface = p.cmd.match(/CMUX_SURFACE_ID=(\S+)/)?.[1];
+    if (!surface || !want.has(surface) || !/^\S*claude\s/.test(p.cmd) || /node/.test(byPid.get(p.ppid)?.cmd || 'node')) continue;
+    const rec = readJson(path.join(os.homedir(), '.claude', 'sessions', `${p.pid}.json`), null);
+    if (!rec?.sessionId || !rec.cwd) continue;
+    const file = path.join(os.homedir(), '.claude', 'projects', rec.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${rec.sessionId}.jsonl`);
+    if (fs.existsSync(file)) { found.push({ ...want.get(surface), transcript: file }); want.delete(surface); }
+  }
+  return found;
+}
 
 /**
  * The context watch. Every 30 s: a session with a handed-in prompt is restarted; a Claude session past its
@@ -226,8 +250,16 @@ function watch(port) {
       log(`kickoff @${k}: fresh session ${told.ok ? 'started and handed its prompt' : 'started, but the prompt line was NOT delivered: ' + told.out.trim().split('\n').pop()}`);
     } finally { active.delete(k); }
   };
+  let lastFind = 0;
   const tick = async () => {
     const cfg = readJson(KICKOFF_CFG, {});
+    if (Date.now() - lastFind > 5 * 6e4) {
+      lastFind = Date.now();
+      for (const s of await findTranscripts(await who())) {
+        await fetch(`http://127.0.0.1:${port}/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seat: s.seat, handle: s.handle, workspace: s.workspace, surface: s.surface, transcript: s.transcript }) });
+        log(`watch @${keyOf(s)}: found its transcript; watching it`);
+      }
+    }
     for (const s of await who()) {
       const k = keyOf(s);
       if (!s.surface || active.has(k)) continue;
