@@ -74,7 +74,7 @@ export function serve(port = PORT) {
         if (b.surface) for (const [kk, v] of Object.entries(sessions)) if (kk !== k && v.surface === b.surface) delete sessions[kk];
         sessions[k] = { ...prev, seat: b.seat, handle: b.handle, type: b.type || prev.type || '?', model: b.model || prev.model || '?',
           context: b.context ?? prev.context ?? '', workspace: b.workspace || prev.workspace || null, surface: b.surface || prev.surface || null,
-          subscriptions: b.subscriptions || prev.subscriptions || [], lastRead: prev.lastRead || 0, seenAt: Date.now() };
+          subscriptions: b.subscriptions || prev.subscriptions || ['#fleet'], lastRead: prev.lastRead || 0, seenAt: Date.now() };
         saveSessions();
         const unread = messages.filter(m => m.id > sessions[k].lastRead && isFor(m, sessions[k], list()));
         return send(res, 200, { registered: sessions[k], unread });
