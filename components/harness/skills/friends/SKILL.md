@@ -51,6 +51,15 @@ node harness/components/friends/tools/friend.mjs run <friend> "<ask>" [--model <
   facts and real content. Never describe the look in words instead, and never add design rules of
   your own: text rules override what the designer sees.
 
+## Codex logins
+
+A Codex friend with no pool account uses the friends' own Codex login when
+`~/.incubator/codex-friends` holds one (override with `FRIENDS_CODEX_HOME`), else the operator's
+`~/.codex`. So the operator and the friends can run on different ChatGPT accounts. Log the friends'
+folder in once, in a real terminal: `CODEX_HOME=~/.incubator/codex-friends codex login`. Codex keeps
+that login fresh itself. Never copy an `auth.json` between folders: two copies of one login
+refresh against each other and one of them stops working.
+
 ## Friends or sub-agents
 
 All delegated work goes to a friend or a sub-agent. There are no workers and no managers. You

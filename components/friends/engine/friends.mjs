@@ -591,8 +591,14 @@ export async function dispatchFriend(friendId, options = {}) {
     delete friendEnv.OPENCODE_HOME;
     delete friendEnv.GROK_HOME;
     configDir = null;
+    // Codex friends can have a login of their own, apart from the operator's ~/.codex: a Codex home
+    // folder that Codex itself keeps fresh. Log it in once: CODEX_HOME=<that folder> codex login.
+    const friendsCodexHome = friendId === 'codex' && fs.existsSync(path.join(FRIENDS_CODEX_HOME, 'auth.json'));
+    if (friendsCodexHome) friendEnv.CODEX_HOME = FRIENDS_CODEX_HOME;
     if (typeof options.onStderr === 'function') {
-      options.onStderr(`[friends] no ${friendId} account in the pool; using the operator's own ${friendId} login\n`);
+      options.onStderr(friendsCodexHome
+        ? `[friends] no codex account in the pool; using the friends' own codex login (${FRIENDS_CODEX_HOME})\n`
+        : `[friends] no ${friendId} account in the pool; using the operator's own ${friendId} login\n`);
     }
   }
 
@@ -632,7 +638,7 @@ export async function dispatchFriend(friendId, options = {}) {
     prompt: options.prompt,
     cwd,
     accountId: activeAccount?.id || null,
-    auth: activeAccount ? `pool:${activeAccount.id}` : 'operator-login',
+    auth: activeAccount ? `pool:${activeAccount.id}` : (friendEnv.CODEX_HOME === FRIENDS_CODEX_HOME ? 'friends-login' : 'operator-login'),
     isIsolated: report.isIsolated,
     changeId: report.changeId,
     commitId: report.commitId,
@@ -652,6 +658,9 @@ export async function dispatchFriend(friendId, options = {}) {
 export function shellQuote(word) {
   return `'${String(word).replace(/'/g, `'\\''`)}'`;
 }
+
+/** The friends' own Codex home (a separate ChatGPT login from the operator's ~/.codex), used when it holds a login. */
+export const FRIENDS_CODEX_HOME = process.env.FRIENDS_CODEX_HOME || path.join(os.homedir(), '.incubator', 'codex-friends');
 
 /** One ssh alias per line. When the file exists, remote runs go only to the hosts it lists. */
 export const REMOTE_HOSTS_FILE = path.join(os.homedir(), '.config', 'incubator', 'remote-hosts');
