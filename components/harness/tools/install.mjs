@@ -360,11 +360,12 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
     const hookCmd = 'node harness/components/brain/tools/session-start.mjs';
     settings.hooks = settings.hooks && typeof settings.hooks === 'object' ? settings.hooks : {};
     const list = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
-    const already = list.some(entry => (entry.hooks || []).some(h => h.command === hookCmd));
-    if (!already) {
-      list.push({ matcher: 'startup|resume|clear', hooks: [{ type: 'command', command: hookCmd, timeout: 60 }] });
-      settings.hooks.SessionStart = list;
-    }
+    // compact too: a session that auto-compacts gets its brain and working memory back.
+    const matcher = 'startup|resume|clear|compact';
+    const mine = list.find(entry => (entry.hooks || []).some(h => h.command === hookCmd));
+    if (mine) mine.matcher = matcher;
+    else list.push({ matcher, hooks: [{ type: 'command', command: hookCmd, timeout: 60 }] });
+    settings.hooks.SessionStart = list;
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
   }

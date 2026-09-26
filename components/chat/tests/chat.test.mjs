@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolve, recipients, mentionsIn, validAddress } from '../lib/core.mjs';
+import { resolve, recipients, mentionsIn, validAddress, contextTokens, limitFor, parseTokens } from '../lib/core.mjs';
 import { parseContexts } from '../lib/directory.mjs';
 
 const S = [
@@ -29,6 +29,20 @@ test('who is pinged: the address, mentions in the text, channel subscribers, nev
   assert.deepEqual(keys(recipients({ from: 'manager-pm/lead', to: '#fleet', text: 'mine' }, S)), [], 'the sender is never pinged');
   assert.deepEqual(mentionsIn('mail ops@example.com and @agent-f.'), ['@agent-f'], 'an email address is not a mention');
   assert.ok(validAddress('@agent-f/wolf-den') && validAddress('#fleet') && !validAddress('agent-f') && !validAddress('@'));
+});
+
+test('the context watch: tokens from a transcript tail, limits from kickoff.json', () => {
+  const turn = (u, extra = {}) => JSON.stringify({ type: 'assistant', message: { usage: u }, ...extra });
+  const tail = ['{"cut line', turn({ input_tokens: 1, cache_read_input_tokens: 500000, cache_creation_input_tokens: 9 }),
+    turn({ input_tokens: 5, cache_read_input_tokens: 5 }, { isSidechain: true }), JSON.stringify({ type: 'user', message: {} })].join('\n');
+  assert.equal(contextTokens(tail), 500010, 'the last main-thread turn; a subagent turn does not count');
+  assert.equal(contextTokens('{"cut'), 0);
+  assert.deepEqual(['700k', '0.5m', 600000, 'x'].map(parseTokens), [700000, 500000, 600000, NaN]);
+  const s = { seat: 'agent-f-pm', handle: 'astra' };
+  assert.equal(limitFor({}, s), 700000, 'default 700k');
+  assert.equal(limitFor({ default: '650k', 'agent-f-pm': '500k' }, s), 500000, 'the seat beats the default');
+  assert.equal(limitFor({ 'agent-f-pm': '500k', 'agent-f-pm/astra': '600k' }, s), 600000, 'the session beats the seat');
+  assert.equal(limitFor({ 'agent-f-pm': 'off' }, s), 0, 'off: not watched');
 });
 
 test('contexts are read from brain output', () => {
@@ -73,6 +87,16 @@ test('the service: register, send pings the right tab, unread waits, foreign ori
   assert.equal(who.handle, 'wobs', 'the tab is known by its latest registration');
   assert.ok(!(await (await fetch(`http://127.0.0.1:${port}/who`)).json()).sessions.some(x => x.handle === 'bhw'), 'the old handle of that tab is gone');
   assert.equal((await (await fetch(`http://127.0.0.1:${port}/whoami?surface=s1`)).json()).handle, 'lead', 'the lead kept its row');
+  // a handed-in kickoff prompt is stored and marked on the session until the bridge restarts the tab
+  await post('/register', { seat: 'agent-f-pm', handle: 'lead', transcript: '/t/a.jsonl' });
+  const k = await (await post('/kickoff', { from: 'agent-f-pm/lead', text: 'I am resuming work on Wolf Den.' })).json();
+  assert.equal(fs.readFileSync(k.file, 'utf8'), 'I am resuming work on Wolf Den.');
+  let lead = (await (await fetch(`http://127.0.0.1:${port}/who`)).json()).sessions.find(x => x.handle === 'lead' && x.seat === 'agent-f-pm');
+  assert.equal(lead.kickoff.file, k.file); assert.equal(lead.transcript, '/t/a.jsonl');
+  assert.equal((await post('/kickoff', { from: 'agent-c-pm/lead', text: 'x' })).status, 400, 'no cmux tab: nothing could restart it');
+  await post('/kickoff/done', { key: 'agent-f-pm/lead' });
+  lead = (await (await fetch(`http://127.0.0.1:${port}/who`)).json()).sessions.find(x => x.handle === 'lead' && x.seat === 'agent-f-pm');
+  assert.equal(lead.kickoff, undefined);
   assert.equal((await post('/send', { from: 'x/y', to: '#fleet', text: 'forged' }, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await fetch(`http://127.0.0.1:${port}/send`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' })).status, 415);
   srv.closeAllConnections(); srv.close();

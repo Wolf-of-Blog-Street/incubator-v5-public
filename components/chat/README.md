@@ -18,3 +18,16 @@ node harness/components/chat/chat.mjs mcp                 # MCP tools: chat_send
 - **Safety**: loopback only; a browser request from any other origin, and any write that is not JSON, is refused, so a web page cannot type into an agent.
 - **Storage**: `~/.incubator/chat/` (`messages.jsonl`, `sessions.json`, `directory.json`, `chat.log`).
 - **The directory**: every seat under `~/Projects/agents` (`CHAT_AGENTS_ROOT`) and every context in its brain, rebuilt every ten minutes and on `who --refresh`.
+
+## The context watch
+
+The bridge reads every Claude session's context from its transcript every 30 s: the input side of its last
+turn. The session-start hook registers the transcript path. Past the session's limit, the bridge asks it
+to self-kickoff. The session hands in its resume prompt (`chat kickoff --file <resume.md>`). When its turn
+ends, the bridge sends `/clear` (`/new` for Codex), then tells the fresh session where the prompt is. The
+old transcript is never measured again, so the watch resets by itself.
+
+Limits: `~/.incubator/chat/kickoff.json`, read every round: `{"default": "700k", "agent-f-pm": "500k",
+"agent-f-pm/astra": "600k", "some-seat": "off"}`. A session key beats a seat, and a seat beats the default.
+With no file, the limit is 700k. The prompts stay in `~/.incubator/chat/kickoffs/`, and the watch state is
+in `watch.json`.

@@ -11,6 +11,12 @@
  *   chat start                                                     open the delivery bridge in its own cmux tab (it types messages into agents' tabs)
  *   chat bridge                                                    the bridge itself (runs inside cmux)
  *   chat mcp                                                       MCP server on stdio: chat_send, chat_read, chat_who, chat_register
+ *   chat kickoff --file <resume.md>                                hand in your self-kickoff prompt; the watch gives this tab a fresh session
+ *
+ * The context watch (in the bridge): a Claude session whose context passes its limit is told to self-kickoff.
+ * It hands in its resume prompt (chat kickoff); the bridge waits for the turn to end, sends /clear (/new for
+ * Codex), then points the fresh session at the prompt. Limits: ~/.incubator/chat/kickoff.json, e.g.
+ * {"default": "700k", "agent-f-pm": "500k", "agent-f-pm/astra": "600k", "some-seat": "off"}.
  *
  * Who you are: --as seat/handle, else CHAT_ME, else the seat of the current folder (harness/falcon.env)
  * with handle CHAT_HANDLE or "lead".
@@ -21,7 +27,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { keyOf, validAddress, recipients, isFor, deliveryText } from './lib/core.mjs';
+import { keyOf, validAddress, recipients, isFor, deliveryText, contextTokens, limitFor } from './lib/core.mjs';
 import { buildDirectory, seatId } from './lib/directory.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,6 +37,9 @@ const TELL = process.env.CHAT_TELL || path.join(__dirname, '..', 'harness', 'too
 const MSGS = path.join(HOME, 'messages.jsonl');
 const SESSIONS = path.join(HOME, 'sessions.json');
 const DIRECTORY = path.join(HOME, 'directory.json');
+const KICKOFFS = path.join(HOME, 'kickoffs');       // handed-in resume prompts
+const KICKOFF_CFG = path.join(HOME, 'kickoff.json'); // context limits
+const WATCH = path.join(HOME, 'watch.json');         // the bridge's watch state
 
 const readJson = (p, d) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; } };
 const writeJson = (p, v) => { fs.writeFileSync(p + '.tmp', JSON.stringify(v, null, 2), { mode: 0o600 }); fs.renameSync(p + '.tmp', p); };
@@ -73,7 +82,7 @@ export function serve(port = PORT) {
         // One tab, one session: drop this tab's old registrations under other handles.
         if (b.surface) for (const [kk, v] of Object.entries(sessions)) if (kk !== k && v.surface === b.surface) delete sessions[kk];
         sessions[k] = { ...prev, seat: b.seat, handle: b.handle, type: b.type || prev.type || '?', model: b.model || prev.model || '?',
-          context: b.context ?? prev.context ?? '', workspace: b.workspace || prev.workspace || null, surface: b.surface || prev.surface || null,
+          context: b.context ?? prev.context ?? '', workspace: b.workspace || prev.workspace || null, surface: b.surface || prev.surface || null, transcript: b.transcript || prev.transcript || null,
           subscriptions: b.subscriptions || prev.subscriptions || ['#fleet'], lastRead: prev.lastRead || 0, seenAt: Date.now() };
         saveSessions();
         const unread = messages.filter(m => m.id > sessions[k].lastRead && isFor(m, sessions[k], list()));
@@ -89,6 +98,22 @@ export function serve(port = PORT) {
         const to = recipients(msg, list());
         for (const s of streams) s.write(`data: ${JSON.stringify(msg)}\n\n`);
         return send(res, 200, { id: msg.id, pinged: to.map(keyOf), waiting: to.filter(s => !s.surface || !bridges.size).map(keyOf), bridge: bridges.size > 0 });
+      }
+      if (req.method === 'POST' && u.pathname === '/kickoff') {
+        const b = await body(req), s = sessions[b.from];
+        if (!s) return send(res, 404, { error: `@${b.from} is not registered` });
+        if (!s.surface) return send(res, 400, { error: 'this session has no cmux tab, so the watch cannot restart it' });
+        if (!String(b.text || '').trim()) return send(res, 400, { error: 'the resume prompt is empty' });
+        fs.mkdirSync(KICKOFFS, { recursive: true, mode: 0o700 });
+        const file = path.join(KICKOFFS, `${b.from.replace('/', '__')}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
+        fs.writeFileSync(file, String(b.text), { mode: 0o600 });
+        s.kickoff = { file, ts: Date.now() }; s.seenAt = Date.now(); saveSessions();
+        return send(res, 200, { file, bridge: bridges.size > 0 });
+      }
+      if (req.method === 'POST' && u.pathname === '/kickoff/done') {
+        const b = await body(req);
+        if (sessions[b.key]) { delete sessions[b.key].kickoff; saveSessions(); }
+        return send(res, 200, { ok: true });
       }
       if (req.method === 'GET' && u.pathname === '/read') {
         const me = sessions[u.searchParams.get('me')];
@@ -145,6 +170,7 @@ export async function bridge(port = PORT) {
       })));
     queues.set(s.surface, q);
   };
+  watch(port);
   for (;;) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/stream?bridge=1`);
@@ -165,6 +191,57 @@ export async function bridge(port = PORT) {
     } catch (e) { console.log(`bridge: ${e.message}; retrying in 5s`); }
     await new Promise(res => setTimeout(res, 5000));
   }
+}
+
+const log = t => console.log(`${new Date().toTimeString().slice(0, 8)}  ${t}`);
+const run = (cmd, args, timeout = 180000) => new Promise(res => execFile(cmd, args, { timeout }, (err, out) => res({ ok: !err, out: String(out || err?.message || '') })));
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+/** The last 2 MB of a transcript: enough to hold its last turn. */
+function tail(file) {
+  try { const fd = fs.openSync(file, 'r'); const n = Math.min(fs.fstatSync(fd).size, 2e6), b = Buffer.alloc(n); fs.readSync(fd, b, 0, n, fs.fstatSync(fd).size - n); fs.closeSync(fd); return b.toString(); } catch { return ''; }
+}
+/** A tab is busy while its agent works: Claude Code and Codex both show "esc to interrupt". */
+const busy = async s => { const r = await run('cmux', ['read-screen', '--workspace', s.workspace, '--surface', s.surface, '--lines', '15'], 10000); return !r.ok || /esc to interrupt/i.test(r.out); };
+async function idle(s, maxMs) { for (const end = Date.now() + maxMs; Date.now() < end; await sleep(5000)) if (!(await busy(s))) { await sleep(3000); if (!(await busy(s))) return true; } return false; }
+
+/**
+ * The context watch. Every 30 s: a session with a handed-in prompt is restarted; a Claude session past its
+ * limit is told to self-kickoff (again after 30 min if it does not). A restarted session's old transcript is
+ * never measured again, so the watch resets when the fresh session registers.
+ */
+function watch(port) {
+  const state = readJson(WATCH, {}), active = new Set();
+  const who = async () => (await (await fetch(`http://127.0.0.1:${port}/who`)).json()).sessions;
+  const restart = async s => {
+    const k = keyOf(s), prompt = s.kickoff.file;
+    active.add(k);
+    try {
+      if (!(await idle(s, 20 * 6e4))) return log(`kickoff @${k}: the tab stayed busy for 20 min; trying again next round`);
+      const cleared = await run('sh', [TELL, s.workspace, s.surface, s.type === 'codex' ? '/new' : '/clear']);
+      if (!cleared.ok) return log(`kickoff @${k}: could not clear the tab: ${cleared.out.trim().split('\n').pop()}`);
+      await sleep(10000); await idle(s, 2 * 6e4);
+      const told = await run('sh', [TELL, s.workspace, s.surface, `[context watch] This is a fresh session after your self-kickoff. Your resume prompt is in ${prompt} : read it and continue from it.`]);
+      state[k] = { done: s.transcript, at: Date.now() }; writeJson(WATCH, state);
+      await fetch(`http://127.0.0.1:${port}/kickoff/done`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: k }) });
+      log(`kickoff @${k}: fresh session ${told.ok ? 'started and handed its prompt' : 'started, but the prompt line was NOT delivered: ' + told.out.trim().split('\n').pop()}`);
+    } finally { active.delete(k); }
+  };
+  const tick = async () => {
+    const cfg = readJson(KICKOFF_CFG, {});
+    for (const s of await who()) {
+      const k = keyOf(s);
+      if (!s.surface || active.has(k)) continue;
+      if (s.kickoff) { restart(s).catch(e => log(`kickoff @${k}: ${e.message}`)); continue; }
+      const limit = limitFor(cfg, s), st = state[k] || {};
+      if (!limit || !s.transcript || s.transcript === st.done) continue;
+      const used = contextTokens(tail(s.transcript));
+      if (used < limit || (st.askedFor === s.transcript && Date.now() - st.askedAt < 30 * 6e4)) continue;
+      state[k] = { ...st, askedFor: s.transcript, askedAt: Date.now() }; writeJson(WATCH, state);
+      log(`watch @${k}: ${Math.round(used / 1e3)}k tokens (limit ${Math.round(limit / 1e3)}k); asked to self-kickoff`);
+      run('sh', [TELL, s.workspace, s.surface, `[context watch] Your context is at ${Math.round(used / 1e3)}k tokens (limit ${Math.round(limit / 1e3)}k). Self-kickoff now: run the brain-self-kickoff skill, write the resume prompt to a file, then run: node harness/components/chat/chat.mjs kickoff --file <that file>. Then end your turn. The watch gives this tab a fresh session and hands it your prompt.`]);
+    }
+  };
+  setInterval(() => tick().catch(e => log(`watch: ${e.message}`)), 30000);
 }
 
 // ---------------------------------------------------------------- the client
@@ -204,7 +281,8 @@ export const api = {
   say: (me, to, text) => call('POST', '/send', { from: `${me.seat}/${me.handle}`, to, text }),
   read: (me, { channel, unread, since: s } = {}) => call('GET', `/read?me=${encodeURIComponent(`${me.seat}/${me.handle}`)}${channel ? `&channel=${encodeURIComponent(channel)}` : ''}${unread ? '&unread=1' : ''}${s ? `&since=${s}` : ''}`),
   who: refresh => call('GET', `/who${refresh ? '?refresh=1' : ''}`),
-  register: (me, f) => call('POST', '/register', { seat: me.seat, handle: me.handle, force: !!f.force, type: f.type, model: f.model, context: f.context,
+  kickoff: (me, text) => call('POST', '/kickoff', { from: `${me.seat}/${me.handle}`, text }),
+  register: (me, f) => call('POST', '/register', { seat: me.seat, handle: me.handle, force: !!f.force, type: f.type, model: f.model, context: f.context, transcript: f.transcript,
     workspace: f.workspace || process.env.CMUX_WORKSPACE_ID, surface: f.surface || process.env.CMUX_SURFACE_ID,
     subscriptions: f.subscribe ? String(f.subscribe).split(',').map(s => s.trim()).filter(Boolean) : undefined }),
 };
@@ -233,15 +311,15 @@ function parse(argv) {
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
   const { f, pos } = parse(rest);
-  const KNOWN = { say: ['as', 'seat', 'handle'], read: ['as', 'seat', 'handle', 'unread', 'since'], who: ['refresh'], serve: ['port'], bridge: ['port'], start: [], mcp: [],
-    register: ['as', 'seat', 'handle', 'type', 'model', 'context', 'subscribe', 'workspace', 'surface', 'force'] };
+  const KNOWN = { say: ['as', 'seat', 'handle'], read: ['as', 'seat', 'handle', 'unread', 'since'], who: ['refresh'], serve: ['port'], bridge: ['port'], start: [], mcp: [], kickoff: ['as', 'seat', 'handle', 'file'],
+    register: ['as', 'seat', 'handle', 'type', 'model', 'context', 'subscribe', 'workspace', 'surface', 'force', 'transcript'] };
   let me;
   const need = () => { if (!me.seat) throw new Error('no seat here: run chat from a seat folder, or pass --as seat/handle'); };
   (async () => {
     const bad = KNOWN[cmd] ? Object.keys(f).filter(k => k !== 'help' && !KNOWN[cmd].includes(k)) : [];
     if (!KNOWN[cmd] || f.help || bad.length) {
       if (bad.length && !f.help) console.error(`chat ${cmd}: unknown option ${bad.map(b => '--' + b).join(', ')}`);
-      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2, 20).map(l => l.replace(/^ \* ?/, '')).join('\n'));
+      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2, 26).map(l => l.replace(/^ \* ?/, '')).join('\n'));
       process.exit(KNOWN[cmd] && !bad.length ? 0 : 2);
     }
     me = await whoAmI(f);
@@ -256,6 +334,12 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import
     }
     if (cmd === 'say') { need(); const r = await api.say(me, pos[0], pos.slice(1).join(' ')); return console.log(`sent #${r.id}; pinged ${r.pinged.join(', ') || 'nobody (no session matches; it waits in the log)'}${r.waiting.length ? `; waiting (no cmux tab): ${r.waiting.join(', ')}` : ''}`); }
     if (cmd === 'read') { need(); const r = await api.read(me, { channel: pos[0], unread: f.unread, since: f.since }); return console.log(r.map(fmtMsg).join('\n') || '(nothing)'); }
+    if (cmd === 'kickoff') {
+      need();
+      if (typeof f.file !== 'string') throw new Error('kickoff needs --file <resume prompt>');
+      const r = await api.kickoff(me, fs.readFileSync(f.file, 'utf8'));
+      return console.log(`handed in (${r.file}). End your turn now: the watch sends this tab /clear when it is idle, then points the fresh session at the prompt.${r.bridge ? '' : ' The bridge is not running: nothing restarts this tab until it is (chat start).'}`);
+    }
     if (cmd === 'who') return console.log(renderWho(await api.who(f.refresh)));
     if (cmd === 'register') {
       need();

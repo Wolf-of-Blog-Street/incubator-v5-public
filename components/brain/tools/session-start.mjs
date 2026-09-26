@@ -84,7 +84,7 @@ try {
   const model = hook.model?.id || (typeof hook.model === 'string' ? hook.model : '') || process.env.ANTHROPIC_MODEL || 'claude';
   const CHAT = path.join(__dirname, '..', '..', 'chat', 'chat.mjs');
   if (fs.existsSync(CHAT)) {
-    const reg = extra => spawnSync(process.execPath, [CHAT, 'register', '--type', 'claude', '--model', model, '--context', loadedSlugs.join(',') || 'default', ...extra], { cwd: root, encoding: 'utf8', timeout: 5000 });
+    const reg = extra => spawnSync(process.execPath, [CHAT, 'register', '--type', 'claude', '--model', model, '--context', loadedSlugs.join(',') || 'default', ...(hook.transcript_path ? ['--transcript', hook.transcript_path] : []), ...extra], { cwd: root, encoding: 'utf8', timeout: 5000 });
     // This tab keeps its handle; a new tab takes "lead" when it is free, else a handle of its own.
     let r = reg([]);
     if (/held by another tab/.test(r.stderr || '')) r = reg(['--handle', `tab-${String(process.env.CMUX_SURFACE_ID || Date.now()).slice(0, 4).toLowerCase()}`]);

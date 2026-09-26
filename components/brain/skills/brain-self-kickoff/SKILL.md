@@ -5,6 +5,7 @@ description: >-
   "self-kickoff", "hand off", at the end of a long session, or when context is getting full.
   Updates the brain cards, rewrites the current context's working memory through Opus 4.5 with
   the state of play and exact next steps, and produces a resume prompt for the next session.
+  Also use when a "[context watch]" line asks you to self-kickoff: then hand the prompt in with chat kickoff.
 ---
 
 # brain-self-kickoff — Session Memory Write-Back & Handoff
@@ -62,3 +63,17 @@ I am resuming work on [Project/Component].
   2. [Step 2]
 ---
 ```
+
+---
+
+## 4. When the Context Watch Asked: Hand the Prompt In
+The context watch (fleet chat bridge) asks a session to self-kickoff when its context passes its limit
+(700k tokens by default). Then there is no operator to paste the prompt. Do steps 1 to 3, write the
+prompt (the text between the `---` lines) to a file, and hand it in:
+
+```bash
+node harness/components/chat/chat.mjs kickoff --file <resume.md>
+```
+
+Then end your turn. When the tab is idle, the watch sends `/clear`, and tells the fresh session where
+the prompt is. You can hand in without being asked, too: that is a self-restart with no operator.

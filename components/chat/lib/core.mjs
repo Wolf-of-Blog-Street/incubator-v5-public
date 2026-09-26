@@ -49,3 +49,32 @@ export const isFor = (msg, session, sessions) => recipients(msg, sessions).some(
 /** The line typed into a session's input box. */
 export const deliveryText = msg =>
   `[chat ${msg.to} from @${msg.from}] ${String(msg.text).replace(/\s*\n\s*/g, ' ')}  (reply: chat say @${msg.from} "...")`;
+
+// ---------------------------------------------------------------- the context watch
+/**
+ * The context a Claude session holds now: the input side of its last main-thread turn (fresh input +
+ * cache reads + cache writes), read from the tail of its transcript. 0 when there is no turn yet.
+ */
+export function contextTokens(tail) {
+  const lines = String(tail || '').split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes('"usage"')) continue;
+    let e; try { e = JSON.parse(lines[i]); } catch { continue; } // the first line of a tail is cut
+    const u = e.message?.usage;
+    if (e.type !== 'assistant' || e.isSidechain || !u) continue;
+    return (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+  }
+  return 0;
+}
+
+/** "700k", "0.5m", 600000 → tokens. */
+export const parseTokens = v => { const m = String(v ?? '').trim().toLowerCase().match(/^(\d+(?:\.\d+)?)([km]?)$/); return m ? Math.round(m[1] * { '': 1, k: 1e3, m: 1e6 }[m[2]]) : NaN; };
+
+/**
+ * A session's kickoff limit from kickoff.json: "seat/handle", then "seat", then "default", then 700k.
+ * A value of "off" (or 0) leaves the session unwatched.
+ */
+export function limitFor(cfg, s) {
+  for (const k of [keyOf(s), s.seat, 'default']) if (cfg?.[k] !== undefined) return cfg[k] === 'off' ? 0 : parseTokens(cfg[k]) || 0;
+  return 700000;
+}
