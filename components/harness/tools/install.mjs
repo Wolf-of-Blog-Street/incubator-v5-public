@@ -81,6 +81,7 @@ function resolveSources() {
       friendsDir: path.join(devRoot, 'components/friends'),
       harnessDir: path.join(devRoot, 'components/harness'),
       viewersDir: path.join(devRoot, 'components/viewers'),
+      chatDir: path.join(devRoot, 'components/chat'),
       componentsDir: path.join(devRoot, 'components'),
       skillsDirs: [path.join(devRoot, 'components/harness/skills'), path.join(devRoot, 'components/brain/skills')]
     };
@@ -101,6 +102,7 @@ function resolveSources() {
     friendsDir: path.join(harnessHome, 'components/friends'),
     harnessDir: path.join(harnessHome, 'components/harness'),
     viewersDir: path.join(harnessHome, 'components/viewers'),
+    chatDir: path.join(harnessHome, 'components/chat'),
     componentsDir: path.join(harnessHome, 'components'),
     skillsDirs: [path.join(harnessHome, 'components/harness/skills'), path.join(harnessHome, 'components/brain/skills')]
   };
@@ -231,6 +233,7 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
   guardedCopyDir(sources.friendsDir, path.join(harnessComponentsDir, 'friends'), 'components/friends');
   guardedCopyDir(sources.harnessDir, path.join(harnessComponentsDir, 'harness'), 'components/harness');
   guardedCopyDir(sources.viewersDir, path.join(harnessComponentsDir, 'viewers'), 'components/viewers');
+  guardedCopyDir(sources.chatDir, path.join(harnessComponentsDir, 'chat'), 'components/chat');
   // components.json marks each component fleet (every seat) or pm (the PM seat only, installed with --pm).
   // Never on a fleet seat, never public: a pm component is dogfood.
   const scopes = (() => { try { return JSON.parse(fs.readFileSync(path.join(sources.componentsDir, 'components.json'), 'utf8')); } catch { return {}; } })();
@@ -330,6 +333,20 @@ export async function installHarness({ agentHome, initCards = false, upgradeCard
         } catch {}
         fs.writeFileSync(cardPath, cardContent, 'utf8');
       }
+    }
+  }
+
+  // 8a. The fleet chat block in every card that exists: added once, replaced on each install, the rest of the card untouched.
+  {
+    const blockPath = path.join(path.dirname(sources.cardTemplate), 'chat-card-block.md');
+    const block = fs.existsSync(blockPath) ? fs.readFileSync(blockPath, 'utf8').trim() : null;
+    const re = /<!-- incubator:chat[\s\S]*?<!-- \/incubator:chat -->/;
+    for (const card of block ? ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'] : []) {
+      const cardPath = path.join(resolvedHome, card);
+      if (!fs.existsSync(cardPath)) continue;
+      const text = fs.readFileSync(cardPath, 'utf8');
+      const next = re.test(text) ? text.replace(re, block) : `${text.replace(/\s*$/, '')}\n\n${block}\n`;
+      if (next !== text) fs.writeFileSync(cardPath, next, 'utf8');
     }
   }
 

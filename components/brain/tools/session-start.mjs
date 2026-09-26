@@ -75,3 +75,18 @@ console.log(`
   WM which · WM show               which working-memory card serves, and its text
   printf '%s' "$DIGEST" | WM update --event load|change|end|kickoff [--context <slug>|default]   rewrite it through Opus 4.5
   (change = something the next agent must know just changed; run it in the same turn, never "later")`);
+
+// Fleet chat: every session that comes online registers who it is and what it works on, so every
+// agent can find it (chat who) and message it (chat say). Best effort: no chat service, no block.
+try {
+  let hook = {};
+  try { if (!process.stdin.isTTY) hook = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch {}
+  const model = hook.model?.id || (typeof hook.model === 'string' ? hook.model : '') || process.env.ANTHROPIC_MODEL || 'claude';
+  const CHAT = path.join(__dirname, '..', '..', 'chat', 'chat.mjs');
+  if (fs.existsSync(CHAT)) {
+    const r = spawnSync(process.execPath, [CHAT, 'register', '--type', 'claude', '--model', model, '--context', loadedSlugs.join(',') || 'default'], { cwd: root, encoding: 'utf8', timeout: 5000 });
+    const out = (r.stdout || '').trim();
+    console.log(`\n## Fleet chat\n${out || 'chat: the chat service is not running; register later with: node harness/components/chat/chat.mjs register --type claude --model <model>'}`);
+    console.log('Message any agent: node harness/components/chat/chat.mjs say @seat[/context] "..." · who is online and every seat\'s contexts: chat who · after you load or switch a context: chat register --type claude --model <model> --context <slug>');
+  }
+} catch {}

@@ -43,7 +43,9 @@ test('installHarness installs harness, brain, board, work zones, manifest.json, 
 
     // 3. Second install without upgradeCards preserves old card
     await installHarness({ agentHome: tmpAgentHome, initCards: true });
-    assert.equal(fs.readFileSync(agentCardPath, 'utf8'), '# Old Agent Entrypoint\n');
+    const card = fs.readFileSync(agentCardPath, 'utf8');
+    assert.ok(card.startsWith('# Old Agent Entrypoint\n'), 'the seat\'s own card text is kept');
+    assert.equal(card.match(/<!-- incubator:chat/g).length, 1, 'the fleet chat block is added once');
 
     // 4. Third install with upgradeCards upgrades the card to latest template
     await installHarness({ agentHome: tmpAgentHome, upgradeCards: true });

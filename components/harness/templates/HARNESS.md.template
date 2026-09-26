@@ -437,7 +437,7 @@ A second orchestrator (for example a Codex agent in another cmux surface) can wo
   - **Your jobs**: the job IDs reserved for the second orchestrator. The lead takes them out of the loop's queue first, so the two never take the same job.
   - **Rules**: heavy work runs on forge-1; its workspaces are named `ws/<name>-<id>`; it uses its own test port range; it ships only through `merge.sh` and its lock; only the lead deploys and closes the board. It may draft a ruling for a BLOCKED job (`runs/<id>-review-notes-draft.md`), but it never relaunches or re-queues a loop job.
   - **Messages**: one line per message, starting `lead:` or `<name>:`, appended at the end. The lead reads the file on every loop tick. When the other side works on the build host, rsync the file there.
-- **A cmux message only says "read the file"**; the content goes in the file. Start it with a sender tag, for example `[Wolf Den lead] read astra-coordination.md`. Send it with one command, never by hand:
+- **A message only says "read the file"**; the content goes in the file. Send it through the fleet chat (`chat say @astra "read astra-coordination.md"`). Without the chat, send it with one command, never by hand:
   `harness/components/harness/tools/cmux-tell.sh <workspace> <surface> "<text>"`
   It types the text, submits it with a raw carriage return, and repeats the return until the text has left the target's input box. It works on Claude Code and Codex, idle or busy (a busy Claude Code queues it). `cmux send-key enter` does not submit in Claude Code: a message sent that way sits in the input box and never arrives. Exit 1 means it was not delivered. Find a surface with `cmux tree --workspace <ws>`.
 - `merge.sh` forgets the job's own workspace by its name, so a workspace named `astra-<id>` ships the same way as `job<id>`.
@@ -457,6 +457,14 @@ All delegated work goes to a friend or a sub-agent. There are no workers and no 
 - **forge-1 does all heavy CPU work**: agents, builds, test runs, sweeps, headless browsers. Never on a laptop. forge-1 runs no servers: do not start or add a server there.
 - **Browser-testing agents** (UX sweeps: many agents, each driving a dev app in headless Camoufox) run on `claude-opus-5-5` at medium effort, on forge-1. Not Sonnet: it stops early and does too little real work.
 - **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use one when the task is short and the operator wants to see it in the sub-agents panel.
+
+### Talking to Other Agents: the Fleet Chat (`components/chat`)
+Every agent, on every CLI (Claude Code, Codex, agy), talks to the others through one live room. Never type into another agent's terminal, and never guess where an agent lives.
+- **Every session registers when it comes online**: seat, handle, type, model and the context it works on (`chat register`). Claude Code does it in the session-start hook; Codex and agy do it first thing, as their card says. Register again after loading or switching a context.
+- **Find who to talk to**: `chat who` lists every agent online and every seat with its contexts. The contexts list is read from every brain every ten minutes, so a new context is known to all.
+- **Message**: `chat say @seat "..."`, `@seat/context`, `@seat/handle`, `@handle`, or `#channel`. The agent is pinged in its cmux tab: idle, it wakes; busy, its CLI queues it; no session, it waits and shows at its next start. A draft someone is typing is never overwritten.
+- **Where it runs**: the service is `me.falcon.chat` on the laptop (127.0.0.1:3335; the live room page is http://127.0.0.1:3335). Delivery runs in a cmux tab of its own (`chat start`), because cmux lets only processes inside cmux type into tabs. `chat mcp` gives the same tools over MCP.
+- The command is `node harness/components/chat/chat.mjs <say|read|who|register>`; the card's fleet chat block has the details.
 
 ### Supported Friends & Models
 - **Claude (`claude`)**: Anthropic Claude Code CLI (default `claude-opus-5-5`; Fable 5.1 runs only in the bug sweeper).
