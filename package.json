@@ -1,6 +1,6 @@
 {
   "name": "incubator-v5",
-  "version": "5.9.15",
+  "version": "5.9.16",
   "license": "MIT",
   "description": "Modular agent engineering platform and component suite",
   "type": "module",

@@ -437,10 +437,9 @@ A second orchestrator (for example a Codex agent in another cmux surface) can wo
   - **Your jobs**: the job IDs reserved for the second orchestrator. The lead takes them out of the loop's queue first, so the two never take the same job.
   - **Rules**: heavy work runs on forge-1; its workspaces are named `ws/<name>-<id>`; it uses its own test port range; it ships only through `merge.sh` and its lock; only the lead deploys and closes the board. It may draft a ruling for a BLOCKED job (`runs/<id>-review-notes-draft.md`), but it never relaunches or re-queues a loop job.
   - **Messages**: one line per message, starting `lead:` or `<name>:`, appended at the end. The lead reads the file on every loop tick. When the other side works on the build host, rsync the file there.
-- **A cmux message only says "read the file"**; the content goes in the file. Start it with a sender tag, for example `[Wolf Den lead] read astra-coordination.md`.
-  1. `cmux send --workspace <ws> --surface <surface> "<text>"`
-  2. Wait about 2 seconds, then `cmux send-key --workspace <ws> --surface <surface> <key>`. Key names are lowercase: `enter` works, `Enter` does nothing. When the target is busy (Codex shows "tab to queue message"), send `tab` to queue the text for its next turn; when it is idle, send `enter`.
-  3. A key that arrives before the text shows is lost. Check with `cmux read-screen --workspace <ws> --surface <surface> --lines 8`, and send the key again if the text is still in the input box.
+- **A cmux message only says "read the file"**; the content goes in the file. Start it with a sender tag, for example `[Wolf Den lead] read astra-coordination.md`. Send it with one command, never by hand:
+  `harness/components/harness/tools/cmux-tell.sh <workspace> <surface> "<text>"`
+  It types the text, submits it with a raw carriage return, and repeats the return until the text has left the target's input box. It works on Claude Code and Codex, idle or busy (a busy Claude Code queues it). `cmux send-key enter` does not submit in Claude Code: a message sent that way sits in the input box and never arrives. Exit 1 means it was not delivered. Find a surface with `cmux tree --workspace <ws>`.
 - `merge.sh` forgets the job's own workspace by its name, so a workspace named `astra-<id>` ships the same way as `job<id>`.
 
 ---
