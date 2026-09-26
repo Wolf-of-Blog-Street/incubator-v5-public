@@ -451,9 +451,12 @@ The **Friends Engine** orchestrates external CLI engines (Claude Code, OpenAI Co
 ### Hard Rule: Claude Code Runs Only on the Laptop or forge-1
 Claude Code (every seat, every friend, every sweep, every browser-testing agent) runs **only** on the laptop or on `forge-1`. Never on any other host, VM or container. Claude traffic from other machines looks like extra users to Anthropic. The friends engine enforces it: a remote run goes only to a host listed in `~/.config/incubator/remote-hosts` (today: `forge-1`). If another machine ever needs Claude, its traffic goes out through a tunnel to forge-1, never from its own IP.
 
+### Hard Rule: Agents Never Touch Accounts or Keys
+The account proxy on the laptop picks the Claude account for every request (`ANTHROPIC_BASE_URL` in `~/.claude/settings.json`); it spreads work over every account by itself. No agent chooses, rotates, reads or passes an account, a token or a key: no `panel-as.sh`, no `max-tokens.env`, no `CLAUDE_CODE_OAUTH_TOKEN`, no 1Password reads for model logins. When an account is out, the proxy moves on; the agent does nothing.
+
 ### Friends or Sub-agents
 All delegated work goes to a friend or a sub-agent. There are no workers and no managers. The agent chooses per task.
-- **Friends do the heavy work**: long runs, builds, production work, anything that loads the machine. Run them on `forge-1` (`--host forge-1 --remote-cwd <dir>`), not on the laptop. The `friends` skill has the host rules.
+- **Friends do the heavy work**: long runs, builds, production work. A Claude friend runs on the laptop, through the proxy (no `--host`), and sends the heavy commands to forge-1 over ssh: builds, test runs and headless browsers run in the job's worktree on forge-1 (`ssh <forge-1 alias> "cd <worktree> && ..."`). The Claude process itself is light.
 - **forge-1 does all heavy CPU work**: agents, builds, test runs, sweeps, headless browsers. Never on a laptop. forge-1 runs no servers: do not start or add a server there.
 - **Browser-testing agents** (UX sweeps: many agents, each driving a dev app in headless Camoufox) run on `claude-opus-5-5` at medium effort, on forge-1. Not Sonnet: it stops early and does too little real work.
 - **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use one when the task is short and the operator wants to see it in the sub-agents panel.

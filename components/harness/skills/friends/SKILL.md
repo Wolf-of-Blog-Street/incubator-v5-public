@@ -65,9 +65,11 @@ refresh against each other and one of them stops working.
 All delegated work goes to a friend or a sub-agent. There are no workers and no managers. You
 choose which one for each task.
 
-- **Friends do the heavy work**: long runs, builds, production work, anything that loads the
-  machine. Run them on `forge-1` (`--host forge-1`, see Remote hosts), never on a
-  laptop. Builds, test runs, sweeps and headless browsers go there too. forge-1 runs no servers.
+- **Friends do the heavy work**: long runs, builds, production work. A Claude friend runs on the
+  laptop through the account proxy (no `--host`), and sends the heavy commands to forge-1 over
+  ssh: builds, test runs and headless browsers run in the job's worktree there. forge-1 runs no servers.
+- **Never touch accounts or keys.** The proxy picks the account for every Claude request. No
+  `panel-as.sh`, no `max-tokens.env`, no tokens, no choosing or rotating accounts.
 - **Sub-agents do light work** (Claude Code only): research, a quick search, a small check. Use
   one when the task is short and the operator wants to see it in the sub-agents panel.
 
@@ -76,6 +78,10 @@ choose which one for each task.
 **Hard rule:** Claude runs only on the laptop or on `forge-1`, never on any other host. A remote
 run goes only to a host listed in `~/.config/incubator/remote-hosts`; the engine refuses any other.
 If another machine ever needs Claude, tunnel its traffic out through forge-1.
+
+**Do not use `--host` for Claude friends.** A remote run skips the account proxy and needs a
+token handed to it, and agents never touch tokens. Run the friend on the laptop and send the
+heavy commands to forge-1 over ssh. The mechanism below stays for the operator's own use.
 
 A friend can run on another machine, so heavy work does not load this one. The fleet's CPU host is
 `forge-1`:
