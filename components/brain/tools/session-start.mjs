@@ -84,8 +84,11 @@ try {
   const model = hook.model?.id || (typeof hook.model === 'string' ? hook.model : '') || process.env.ANTHROPIC_MODEL || 'claude';
   const CHAT = path.join(__dirname, '..', '..', 'chat', 'chat.mjs');
   if (fs.existsSync(CHAT)) {
-    const r = spawnSync(process.execPath, [CHAT, 'register', '--type', 'claude', '--model', model, '--context', loadedSlugs.join(',') || 'default'], { cwd: root, encoding: 'utf8', timeout: 5000 });
-    const out = (r.stdout || '').trim();
+    const reg = extra => spawnSync(process.execPath, [CHAT, 'register', '--type', 'claude', '--model', model, '--context', loadedSlugs.join(',') || 'default', ...extra], { cwd: root, encoding: 'utf8', timeout: 5000 });
+    // This tab keeps its handle; a new tab takes "lead" when it is free, else a handle of its own.
+    let r = reg([]);
+    if (/held by another tab/.test(r.stderr || '')) r = reg(['--handle', `tab-${String(process.env.CMUX_SURFACE_ID || Date.now()).slice(0, 4).toLowerCase()}`]);
+    const out = (r.stdout || '').trim() + (/tab-/.test(r.stdout || '') ? '\nThis session got a placeholder handle. Register again with a real one: chat register --handle <name> --type claude --model <model> --context <slug>' : '');
     console.log(`\n## Fleet chat\n${out || 'chat: the chat service is not running; register later with: node harness/components/chat/chat.mjs register --type claude --model <model>'}`);
     console.log('Message any agent: node harness/components/chat/chat.mjs say @seat[/context] "..." · who is online and every seat\'s contexts: chat who · after you load or switch a context: chat register --type claude --model <model> --context <slug>');
   }

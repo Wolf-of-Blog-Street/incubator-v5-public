@@ -14,7 +14,7 @@ const TOOLS = [
 ];
 
 async function callTool(name, a) {
-  const me = whoAmI({ handle: a.handle });
+  const me = await whoAmI({ handle: a.handle });
   if (name === 'chat_send') { const r = await api.say(me, a.to, a.text); return `sent #${r.id}; pinged ${r.pinged.join(', ') || 'nobody'}`; }
   if (name === 'chat_read') return (await api.read(me, a)).map(fmtMsg).join('\n') || '(nothing)';
   if (name === 'chat_who') return renderWho(await api.who(a.refresh));

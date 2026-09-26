@@ -67,6 +67,11 @@ export function serve(port = PORT) {
         const b = await body(req);
         if (!b.seat || !b.handle) return send(res, 400, { error: 'seat and handle are required' });
         const k = keyOf(b), prev = sessions[k] || {};
+        // A handle belongs to one tab. Another tab seen in the last day holds it: refuse, unless forced.
+        if (prev.surface && b.surface && prev.surface !== b.surface && Date.now() - (prev.seenAt || 0) < 864e5 && !b.force)
+          return send(res, 409, { error: `@${k} is held by another tab (seen ${Math.round((Date.now() - prev.seenAt) / 6e4)}m ago); register with your own --handle` });
+        // One tab, one session: drop this tab's old registrations under other handles.
+        if (b.surface) for (const [kk, v] of Object.entries(sessions)) if (kk !== k && v.surface === b.surface) delete sessions[kk];
         sessions[k] = { ...prev, seat: b.seat, handle: b.handle, type: b.type || prev.type || '?', model: b.model || prev.model || '?',
           context: b.context ?? prev.context ?? '', workspace: b.workspace || prev.workspace || null, surface: b.surface || prev.surface || null,
           subscriptions: b.subscriptions || prev.subscriptions || [], lastRead: prev.lastRead || 0, seenAt: Date.now() };
@@ -95,6 +100,10 @@ export function serve(port = PORT) {
           me.lastRead = messages.at(-1)?.id || 0; me.seenAt = Date.now(); saveSessions();
         }
         return send(res, 200, out.slice(-Number(u.searchParams.get('limit') || 50)));
+      }
+      if (req.method === 'GET' && u.pathname === '/whoami') {
+        const hit = list().find(x => x.surface && x.surface === u.searchParams.get('surface'));
+        return hit ? send(res, 200, hit) : send(res, 404, { error: 'this tab is not registered' });
       }
       if (req.method === 'GET' && u.pathname === '/who') {
         if (u.searchParams.get('refresh')) await refresh();
@@ -166,11 +175,20 @@ function seatDir(from = process.cwd()) {
     if (d === path.dirname(d)) return null;
   }
 }
-export function whoAmI(flags = {}) {
+/**
+ * Who is calling: --as seat/handle, else CHAT_ME, else the session registered for this cmux tab,
+ * else the seat of the current folder with --handle, CHAT_HANDLE or "lead".
+ */
+export async function whoAmI(flags = {}) {
   const me = flags.as || process.env.CHAT_ME;
-  if (me) { const [seat, handle = 'lead'] = me.split('/'); return { seat, handle }; }
+  if (me) { const [seat, handle = 'lead'] = String(me).split('/'); return { seat, handle, explicit: true }; }
   const dir = seatDir();
-  return { seat: flags.seat || (dir ? seatId(dir) : null), handle: flags.handle || process.env.CHAT_HANDLE || 'lead' };
+  const seat = flags.seat || (dir ? seatId(dir) : null);
+  const handle = flags.handle || process.env.CHAT_HANDLE;
+  if (handle) return { seat, handle, explicit: true };
+  const tab = process.env.CMUX_SURFACE_ID;
+  if (tab) { try { const s = await call('GET', `/whoami?surface=${encodeURIComponent(tab)}`); return { seat: s.seat, handle: s.handle, explicit: true }; } catch {} }
+  return { seat, handle: 'lead', explicit: false };
 }
 async function call(method, p, payload) {
   const r = await fetch(`http://127.0.0.1:${PORT}${p}`, { method, headers: { 'content-type': 'application/json' }, body: payload ? JSON.stringify(payload) : undefined })
@@ -186,7 +204,7 @@ export const api = {
   say: (me, to, text) => call('POST', '/send', { from: `${me.seat}/${me.handle}`, to, text }),
   read: (me, { channel, unread, since: s } = {}) => call('GET', `/read?me=${encodeURIComponent(`${me.seat}/${me.handle}`)}${channel ? `&channel=${encodeURIComponent(channel)}` : ''}${unread ? '&unread=1' : ''}${s ? `&since=${s}` : ''}`),
   who: refresh => call('GET', `/who${refresh ? '?refresh=1' : ''}`),
-  register: (me, f) => call('POST', '/register', { seat: me.seat, handle: me.handle, type: f.type, model: f.model, context: f.context,
+  register: (me, f) => call('POST', '/register', { seat: me.seat, handle: me.handle, force: !!f.force, type: f.type, model: f.model, context: f.context,
     workspace: f.workspace || process.env.CMUX_WORKSPACE_ID, surface: f.surface || process.env.CMUX_SURFACE_ID,
     subscriptions: f.subscribe ? String(f.subscribe).split(',').map(s => s.trim()).filter(Boolean) : undefined }),
 };
@@ -215,9 +233,18 @@ function parse(argv) {
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
   const { f, pos } = parse(rest);
-  const me = whoAmI(f);
+  const KNOWN = { say: ['as', 'seat', 'handle'], read: ['as', 'seat', 'handle', 'unread', 'since'], who: ['refresh'], serve: ['port'], bridge: ['port'], start: [], mcp: [],
+    register: ['as', 'seat', 'handle', 'type', 'model', 'context', 'subscribe', 'workspace', 'surface', 'force'] };
+  let me;
   const need = () => { if (!me.seat) throw new Error('no seat here: run chat from a seat folder, or pass --as seat/handle'); };
   (async () => {
+    const bad = KNOWN[cmd] ? Object.keys(f).filter(k => k !== 'help' && !KNOWN[cmd].includes(k)) : [];
+    if (!KNOWN[cmd] || f.help || bad.length) {
+      if (bad.length && !f.help) console.error(`chat ${cmd}: unknown option ${bad.map(b => '--' + b).join(', ')}`);
+      console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2, 20).map(l => l.replace(/^ \* ?/, '')).join('\n'));
+      process.exit(KNOWN[cmd] && !bad.length ? 0 : 2);
+    }
+    me = await whoAmI(f);
     if (cmd === 'serve') return serve(Number(f.port || PORT));
     if (cmd === 'mcp') return (await import('./mcp.mjs')).runMcp();
     if (cmd === 'bridge') return bridge(Number(f.port || PORT));
@@ -232,12 +259,12 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import
     if (cmd === 'who') return console.log(renderWho(await api.who(f.refresh)));
     if (cmd === 'register') {
       need();
+      if (!f.type || !f.model) throw new Error('register needs --type claude|codex|agy and --model <model>');
       const r = await api.register(me, f);
       const s = r.registered;
       console.log(`registered @${s.seat}/${s.handle} (${s.type} ${s.model}, working on ${s.context || '-'})${s.surface ? '' : ' with no cmux tab: messages to you wait until you read them'}`);
       if (r.unread.length) console.log(`\nUnread for you (${r.unread.length}); read them with: chat read --unread\n` + r.unread.slice(-10).map(fmtMsg).join('\n'));
       return;
     }
-    console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2, 18).map(l => l.replace(/^ \* ?/, '')).join('\n'));
   })().catch(e => { console.error(`chat: ${e.message}`); process.exit(1); });
 }

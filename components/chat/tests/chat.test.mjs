@@ -65,6 +65,14 @@ test('the service: register, send pings the right tab, unread waits, foreign ori
   const read = await (await fetch(`http://127.0.0.1:${port}/read?me=agent-c-pm/lead&unread=1`)).json();
   assert.equal(read.length, 2);
   assert.equal((await (await fetch(`http://127.0.0.1:${port}/read?me=agent-c-pm/lead&unread=1`)).json()).length, 0, 'read once, then gone from unread');
+  // a handle belongs to one tab: another tab cannot take it, and a tab keeps one registration
+  assert.equal((await post('/register', { seat: 'agent-f-pm', handle: 'lead', surface: 's9', workspace: 'w1' })).status, 409);
+  assert.equal((await post('/register', { seat: 'agent-f-pm', handle: 'bhw', surface: 's9', workspace: 'w1' })).status, 200);
+  assert.equal((await post('/register', { seat: 'agent-f-pm', handle: 'wobs', surface: 's9', workspace: 'w1' })).status, 200);
+  const who = await (await fetch(`http://127.0.0.1:${port}/whoami?surface=s9`)).json();
+  assert.equal(who.handle, 'wobs', 'the tab is known by its latest registration');
+  assert.ok(!(await (await fetch(`http://127.0.0.1:${port}/who`)).json()).sessions.some(x => x.handle === 'bhw'), 'the old handle of that tab is gone');
+  assert.equal((await (await fetch(`http://127.0.0.1:${port}/whoami?surface=s1`)).json()).handle, 'lead', 'the lead kept its row');
   assert.equal((await post('/send', { from: 'x/y', to: '#fleet', text: 'forged' }, { origin: 'https://evil.example' })).status, 403);
   assert.equal((await fetch(`http://127.0.0.1:${port}/send`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' })).status, 415);
   srv.closeAllConnections(); srv.close();
